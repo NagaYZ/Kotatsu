@@ -13,4 +13,6 @@ val SortOrder.titleRes: Int
 		SortOrder.NEWEST -> R.string.newest
 		SortOrder.ALPHABETICAL -> R.string.by_name
 		SortOrder.ALPHABETICAL_DESC -> R.string.by_name_reverse
+		SortOrder.POPULARITY_WEEK -> R.string.popular_week
+		SortOrder.POPULARITY_TODAY -> R.string.popular_today
 	}

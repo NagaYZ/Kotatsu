@@ -39,6 +39,8 @@
 	<string name="downloads">Downloads</string>
 	<string name="by_name">Name</string>
 	<string name="popular">Popular</string>
+	<string name="popular_week">Popular This Week</string>
+	<string name="popular_today">Popular Today</string>
 	<string name="updated">Updated</string>
 	<string name="newest">Newest</string>
 	<string name="by_rating">Rating</string>
