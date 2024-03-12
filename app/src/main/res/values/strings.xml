@@ -48,7 +48,7 @@
     <string name="light">Light</string>
     <string name="dark">Dark</string>
     <!-- Should be as abstract as possible -->
-	<string name="automatic">Follow system</string>
+	<string name="follow_system">Follow system</string>
     <string name="pages">Pages</string>
     <string name="clear">Clear</string>
     <string name="text_clear_history_prompt">Clear all reading history permanently?</string>
@@ -599,4 +599,23 @@
     <string name="default_page_save_dir">Default page save directory</string>
     <string name="remove_from_history">Remove from history</string>
 	<string name="location">Location</string>
+	<string name="preferred_download_format">Preferred download format</string>
+	<string name="automatic">Automatic</string>
+	<string name="single_cbz_file">Single CBZ file</string>
+	<string name="multiple_cbz_files">Multiple CBZ files</string>
+	<string name="stats_enabled">Enable statistics</string>
+	<string name="reading_stats">Reading statistics</string>
+	<string name="other_manga">Other manga</string>
+	<string name="less_than_minute">Less than a minute</string>
+	<string name="statistics">Statistics</string>
+	<string name="clear_stats">Clear statistics</string>
+	<string name="stats_cleared">Statistics cleared</string>
+	<string name="clear_stats_confirm">Do you really want to clear all reading statistics? This action cannot be undone.</string>
+	<string name="week">Week</string>
+	<string name="month">Month</string>
+	<string name="all_time">All time</string>
+	<string name="day">Day</string>
+	<string name="three_months">Three months</string>
+	<string name="empty_stats_text">There are no statistics for the selected period</string>
+	<string name="pages_read_s">Pages read: %s</string>
 </resources>

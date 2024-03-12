@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.explore.data.SourcesSortOrder
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.find
+import org.koitharu.kotatsu.parsers.util.isNumeric
 import org.koitharu.kotatsu.parsers.util.mapNotNullToSet
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
@@ -191,10 +192,12 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	var appPassword: String?
 		get() = prefs.getString(KEY_APP_PASSWORD, null)
 		set(value) = prefs.edit {
-			if (value != null) putString(KEY_APP_PASSWORD, value) else remove(
-				KEY_APP_PASSWORD,
-			)
+			if (value != null) putString(KEY_APP_PASSWORD, value) else remove(KEY_APP_PASSWORD)
 		}
+
+	var isAppPasswordNumeric: Boolean
+		get() = prefs.getBoolean(KEY_APP_PASSWORD_NUMERIC, false)
+		set(value) = prefs.edit { putBoolean(KEY_APP_PASSWORD_NUMERIC, value) }
 
 	val isLoggingEnabled: Boolean
 		get() = prefs.getBoolean(KEY_LOGGING_ENABLED, false)
@@ -276,6 +279,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	val isDownloadsWiFiOnly: Boolean
 		get() = prefs.getBoolean(KEY_DOWNLOADS_WIFI, false)
+
+	val preferredDownloadFormat: DownloadFormat
+		get() = prefs.getEnumValue(KEY_DOWNLOADS_FORMAT, DownloadFormat.AUTOMATIC)
 
 	var isSuggestionsEnabled: Boolean
 		get() = prefs.getBoolean(KEY_SUGGESTIONS, false)
@@ -416,6 +422,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isPagesSavingAskEnabled: Boolean
 		get() = prefs.getBoolean(KEY_PAGES_SAVE_ASK, true)
 
+	val isStatsEnabled: Boolean
+		get() = prefs.getBoolean(KEY_STATS_ENABLED, false)
+
 	fun isTipEnabled(tip: String): Boolean {
 		return prefs.getStringSet(KEY_TIPS_CLOSED, emptySet())?.contains(tip) != true
 	}
@@ -525,6 +534,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_READER_MODE = "reader_mode"
 		const val KEY_READER_MODE_DETECT = "reader_mode_detect"
 		const val KEY_APP_PASSWORD = "app_password"
+		const val KEY_APP_PASSWORD_NUMERIC = "app_password_num"
 		const val KEY_PROTECT_APP = "protect_app"
 		const val KEY_PROTECT_APP_BIOMETRIC = "protect_app_bio"
 		const val KEY_APP_VERSION = "app_version"
@@ -552,6 +562,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_MAL = "mal"
 		const val KEY_KITSU = "kitsu"
 		const val KEY_DOWNLOADS_WIFI = "downloads_wifi"
+		const val KEY_DOWNLOADS_FORMAT = "downloads_format"
 		const val KEY_ALL_FAVOURITES_VISIBLE = "all_favourites_visible"
 		const val KEY_DOH = "doh"
 		const val KEY_EXIT_CONFIRM = "exit_confirm"
@@ -606,8 +617,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_READING_TIME = "reading_time"
 		const val KEY_PAGES_SAVE_DIR = "pages_dir"
 		const val KEY_PAGES_SAVE_ASK = "pages_dir_ask"
-
-		// About
+		const val KEY_STATS_ENABLED = "stats_on"
 		const val KEY_APP_UPDATE = "app_update"
 		const val KEY_APP_TRANSLATION = "about_app_translation"
 	}

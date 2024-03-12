@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.MarginLayoutParams
 import android.view.WindowManager
+import androidx.activity.result.ActivityResultCallback
 import androidx.activity.viewModels
 import androidx.core.graphics.Insets
 import androidx.core.view.OnApplyWindowInsetsListener
@@ -74,6 +75,7 @@ class ReaderActivity :
 	ReaderControlDelegate.OnInteractionListener,
 	OnApplyWindowInsetsListener,
 	IdlingDetector.Callback,
+	ActivityResultCallback<Uri?>,
 	ZoomControl.ZoomControlListener {
 
 	@Inject
@@ -83,6 +85,7 @@ class ReaderActivity :
 	lateinit var tapGridSettings: TapGridSettings
 
 	private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
+	private val savePageRequest = registerForActivityResult(PageSaveContract(), this)
 
 	private val viewModel: ReaderViewModel by viewModels()
 
@@ -158,6 +161,10 @@ class ReaderActivity :
 		viewBinding.toolbarBottom.addMenuProvider(ReaderBottomMenuProvider(this, readerManager, viewModel))
 	}
 
+	override fun onActivityResult(result: Uri?) {
+		viewModel.onActivityResult(result)
+	}
+
 	override fun getParentActivityIntent(): Intent? {
 		val manga = viewModel.manga?.toManga() ?: return null
 		return DetailsActivity.newIntent(this, manga)
@@ -167,6 +174,11 @@ class ReaderActivity :
 		super.onUserInteraction()
 		scrollTimer.onUserInteraction()
 		idlingDetector.onUserInteraction()
+	}
+
+	override fun onPause() {
+		super.onPause()
+		viewModel.onPause()
 	}
 
 	override fun onIdle() {
@@ -369,6 +381,11 @@ class ReaderActivity :
 	override fun isReaderResumed(): Boolean {
 		val reader = readerManager.currentReader ?: return false
 		return reader.isResumed && supportFragmentManager.fragments.lastOrNull() === reader
+	}
+
+	override fun onSavePageClick() {
+		val page = viewModel.getCurrentPage() ?: return
+		viewModel.saveCurrentPage(page, savePageRequest)
 	}
 
 	private fun onReaderBarChanged(isBarEnabled: Boolean) {

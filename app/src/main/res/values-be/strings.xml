@@ -45,7 +45,7 @@
     <string name="theme">Тэма</string>
     <string name="light">Светлая</string>
     <string name="dark">Цёмная</string>
-    <string name="automatic">Як у сістэме</string>
+    <string name="follow_system">Як у сістэме</string>
     <string name="pages">Старонкi</string>
     <string name="clear">Ачысціць</string>
     <string name="text_clear_history_prompt">Вы ўпэўненыя, што жадаеце ачысціць гісторыю\?</string>
@@ -201,7 +201,7 @@
     <string name="screenshots_block_all">Заўсёды блакуйце</string>
     <string name="screenshots_block_nsfw">Забараніць для NSFW</string>
     <string name="filter_load_error">Немагчыма загрузіць спіс жанраў</string>
-    <string name="disabled">Адключаны</string>
+    <string name="disabled">Адкл.</string>
     <string name="enabled">Ўключаны</string>
     <string name="exclude_nsfw_from_suggestions">Ня прапаноўваць NSFW мангу</string>
     <string name="text_suggestion_holder">Пачніце чытаць мангу, і вы атрымаеце персаналізаваныя прапановы</string>
@@ -469,7 +469,7 @@
     <string name="disable_nsfw">Адключыць NSFW</string>
     <string name="too_many_requests_message">Занадта шмат запытаў. Паўтарыце спробу пазней</string>
     <string name="related_manga_summary">Паказаць спіс звязанай мангі. У некаторых выпадках ён можа быць недакладным або адсутнічаць</string>
-    <string name="advanced">Пашыраныя</string>
+    <string name="advanced">Прасунутая</string>
     <string name="default_section">Раздзел па змаўчанні</string>
     <string name="manga_list">Спіс мангі</string>
     <string name="error_corrupted_file">Вяртаюцца няправільныя дадзеныя ці файл пашкоджаны</string>
@@ -593,4 +593,24 @@
     <string name="default_page_save_dir">Каталог захавання старонкі па змаўчанні</string>
     <string name="remove_from_history">Выдаліць з гісторыі</string>
     <string name="pages_saving">Захаванне старонак</string>
+    <string name="location">Размяшчэнне</string>
+    <string name="stats_enabled">Ўключыць статыстыку</string>
+    <string name="reading_stats">Статыстыка чытання</string>
+    <string name="other_manga">Іншая манга</string>
+    <string name="less_than_minute">Менш хвіліны</string>
+    <string name="statistics">Статыстыка</string>
+    <string name="clear_stats">Ачысціць статыстыку</string>
+    <string name="week">Тыдзень</string>
+    <string name="stats_cleared">Статыстыка ачышчана</string>
+    <string name="month">Месяц</string>
+    <string name="all_time">Увесь час</string>
+    <string name="day">Дзень</string>
+    <string name="empty_stats_text">Статыстыка за абраны перыяд адсутнічае</string>
+    <string name="pages_read_s">Прачытана старонак: %s</string>
+    <string name="automatic">Аўтаматычна</string>
+    <string name="three_months">Тры месяцы</string>
+    <string name="clear_stats_confirm">Вы сапраўды хочаце ачысціць усю статыстыку чытання? Гэта дзеянне нельга адмяніць.</string>
+    <string name="preferred_download_format">Пераважны фармат для загрузак</string>
+    <string name="single_cbz_file">Адзін файл CBZ</string>
+    <string name="multiple_cbz_files">Некалькі файлаў CBZ</string>
 </resources>
