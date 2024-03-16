@@ -1,5 +1,5 @@
 version: "1"
 rules:
   - base: devel
-    upstream: KotatsuApp:master
+    upstream: KotatsuApp:devel
     mergeMethod: merge
