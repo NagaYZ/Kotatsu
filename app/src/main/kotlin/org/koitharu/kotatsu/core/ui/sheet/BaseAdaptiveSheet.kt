@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
+import androidx.activity.ComponentDialog
 import androidx.activity.OnBackPressedDispatcher
 import androidx.annotation.CallSuper
 import androidx.appcompat.app.AppCompatDialog
@@ -52,7 +53,7 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 		get() = behavior?.state == AdaptiveSheetBehavior.STATE_EXPANDED
 
 	val onBackPressedDispatcher: OnBackPressedDispatcher
-		get() = requireComponentDialog().onBackPressedDispatcher
+		get() = (dialog as? ComponentDialog)?.onBackPressedDispatcher ?: requireActivity().onBackPressedDispatcher
 
 	var isLocked = false
 		private set
@@ -97,10 +98,10 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 		val actionModeColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
 			ColorUtils.compositeColors(
 				ContextCompat.getColor(ctx, com.google.android.material.R.color.m3_appbar_overlay_color),
-				ctx.getThemeColor(R.attr.m3ColorBackground),
+				ctx.getThemeColor(com.google.android.material.R.attr.colorSurface),
 			)
 		} else {
-			ContextCompat.getColor(ctx, R.color.kotatsu_m3_background)
+			ContextCompat.getColor(ctx, R.color.kotatsu_surface)
 		}
 		dialog?.window?.let {
 			defaultStatusBarColor = it.statusBarColor
