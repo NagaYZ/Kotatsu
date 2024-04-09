@@ -78,6 +78,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getInt(KEY_GRID_SIZE, 100)
 		set(value) = prefs.edit { putInt(KEY_GRID_SIZE, value) }
 
+	var gridSizePages: Int
+		get() = prefs.getInt(KEY_GRID_SIZE_PAGES, 100)
+		set(value) = prefs.edit { putInt(KEY_GRID_SIZE_PAGES, value) }
+
 	var historyListMode: ListMode
 		get() = prefs.getEnumValue(KEY_LIST_MODE_HISTORY, listMode)
 		set(value) = prefs.edit { putEnumValue(KEY_LIST_MODE_HISTORY, value) }
@@ -226,10 +230,19 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	val defaultDetailsTab: Int
 		get() = if (isPagesTabEnabled) {
-			prefs.getString(KEY_DETAILS_TAB, null)?.toIntOrNull()?.coerceIn(0, 1) ?: 0
+			val raw = prefs.getString(KEY_DETAILS_TAB, null)?.toIntOrNull() ?: 0
+			if (raw == -1) {
+				lastDetailsTab
+			} else {
+				raw
+			}.coerceIn(0, 2)
 		} else {
 			0
 		}
+
+	var lastDetailsTab: Int
+		get() = prefs.getInt(KEY_DETAILS_LAST_TAB, 0)
+		set(value) = prefs.edit { putInt(KEY_DETAILS_LAST_TAB, value) }
 
 	val isContentPrefetchEnabled: Boolean
 		get() {
@@ -527,6 +540,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_SEARCH_HISTORY_CLEAR = "search_history_clear"
 		const val KEY_UPDATES_FEED_CLEAR = "updates_feed_clear"
 		const val KEY_GRID_SIZE = "grid_size"
+		const val KEY_GRID_SIZE_PAGES = "grid_size_pages"
 		const val KEY_REMOTE_SOURCES = "remote_sources"
 		const val KEY_LOCAL_STORAGE = "local_storage"
 		const val KEY_READER_DOUBLE_PAGES = "reader_double_pages"
@@ -631,6 +645,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_IGNORE_DOZE = "ignore_dose"
 		const val KEY_PAGES_TAB = "pages_tab"
 		const val KEY_DETAILS_TAB = "details_tab"
+		const val KEY_DETAILS_LAST_TAB = "details_last_tab"
 		const val KEY_READING_TIME = "reading_time"
 		const val KEY_PAGES_SAVE_DIR = "pages_dir"
 		const val KEY_PAGES_SAVE_ASK = "pages_dir_ask"

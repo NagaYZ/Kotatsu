@@ -4,11 +4,11 @@ import android.content.res.Resources
 import android.view.View
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import org.koitharu.kotatsu.R
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import org.koitharu.kotatsu.R
 
-class MangaListSpanResolver(
+class GridSpanResolver(
 	resources: Resources,
 ) : View.OnLayoutChangeListener {
 

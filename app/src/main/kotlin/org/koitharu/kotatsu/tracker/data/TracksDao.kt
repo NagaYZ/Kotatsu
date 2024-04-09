@@ -14,6 +14,13 @@ abstract class TracksDao {
 	@Query("SELECT * FROM tracks")
 	abstract suspend fun findAll(): List<TrackEntity>
 
+	@Transaction
+	@Query("SELECT * FROM tracks ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset")
+	abstract suspend fun findAll(offset: Int, limit: Int): List<TrackWithManga>
+
+	@Query("SELECT manga_id FROM tracks")
+	abstract suspend fun findAllIds(): LongArray
+
 	@Query("SELECT * FROM tracks WHERE manga_id IN (:ids)")
 	abstract suspend fun findAll(ids: Collection<Long>): List<TrackEntity>
 
@@ -22,6 +29,9 @@ abstract class TracksDao {
 
 	@Query("SELECT chapters_new FROM tracks WHERE manga_id = :mangaId")
 	abstract suspend fun findNewChapters(mangaId: Long): Int?
+
+	@Query("SELECT COUNT(*) FROM tracks")
+	abstract suspend fun getTracksCount(): Int
 
 	@Query("SELECT manga_id, chapters_new FROM tracks")
 	abstract fun observeNewChaptersMap(): Flow<Map<@MapColumn(columnName = "manga_id") Long, @MapColumn(columnName = "chapters_new") Int>>
