@@ -18,6 +18,10 @@ abstract class TracksDao {
 	@Query("SELECT * FROM tracks ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset")
 	abstract suspend fun findAll(offset: Int, limit: Int): List<TrackWithManga>
 
+	@Transaction
+	@Query("SELECT * FROM tracks ORDER BY last_check_time DESC")
+	abstract fun observeAll(): Flow<List<TrackWithManga>>
+
 	@Query("SELECT manga_id FROM tracks")
 	abstract suspend fun findAllIds(): LongArray
 
@@ -43,11 +47,11 @@ abstract class TracksDao {
 	abstract fun observeNewChapters(mangaId: Long): Flow<Int?>
 
 	@Transaction
-	@Query("SELECT manga.* FROM tracks LEFT JOIN manga ON manga.manga_id = tracks.manga_id WHERE chapters_new > 0 ORDER BY chapters_new DESC")
+	@Query("SELECT manga.* FROM tracks LEFT JOIN manga ON manga.manga_id = tracks.manga_id WHERE chapters_new > 0 ORDER BY last_chapter_date DESC")
 	abstract fun observeUpdatedManga(): Flow<List<MangaWithTags>>
 
 	@Transaction
-	@Query("SELECT manga.* FROM tracks LEFT JOIN manga ON manga.manga_id = tracks.manga_id WHERE chapters_new > 0 ORDER BY chapters_new DESC LIMIT :limit")
+	@Query("SELECT manga.* FROM tracks LEFT JOIN manga ON manga.manga_id = tracks.manga_id WHERE chapters_new > 0 ORDER BY last_chapter_date DESC LIMIT :limit")
 	abstract fun observeUpdatedManga(limit: Int): Flow<List<MangaWithTags>>
 
 	@Query("DELETE FROM tracks")
