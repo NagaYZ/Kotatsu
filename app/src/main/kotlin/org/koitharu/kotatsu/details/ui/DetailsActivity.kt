@@ -149,9 +149,6 @@ class DetailsActivity :
 		viewBinding.textViewDescription.viewTreeObserver.addOnDrawListener(this)
 		viewBinding.textViewDescription.movementMethod = LinkMovementMethodCompat.getInstance()
 		viewBinding.chipsTags.onChipClickListener = this
-		viewBinding.recyclerViewRelated.addItemDecoration(
-			SpacingItemDecoration(resources.getDimensionPixelOffset(R.dimen.grid_spacing)),
-		)
 		TitleScrollCoordinator(viewBinding.textViewTitle).attach(viewBinding.scrollView)
 
 		chaptersBadge = ViewBadge(viewBinding.buttonChapters ?: viewBinding.buttonRead, this)
@@ -180,10 +177,7 @@ class DetailsActivity :
 			viewBinding.infoLayout.chipBranch.isVisible = it.size > 1
 		}
 		viewModel.chapters.observe(this, PrefetchObserver(this))
-		viewModel.onDownloadStarted.observeEvent(
-			this,
-			DownloadStartedObserver(viewBinding.scrollView),
-		)
+		viewModel.onDownloadStarted.observeEvent(this, DownloadStartedObserver(viewBinding.scrollView))
 
 		addMenuProvider(
 			DetailsMenuProvider(
@@ -460,6 +454,7 @@ class DetailsActivity :
 			manga.state?.let { state ->
 				textViewState.textAndVisible = resources.getString(state.titleResId)
 				imageViewState.setImageResource(state.iconResId)
+				imageViewState.isVisible = true
 			} ?: run {
 				textViewState.isVisible = false
 				imageViewState.isVisible = false
@@ -531,6 +526,7 @@ class DetailsActivity :
 			info.isIncognitoMode -> getString(R.string.incognito_mode)
 			info.currentChapter >= 0 -> getString(R.string.chapter_d_of_d, info.currentChapter + 1, info.totalChapters)
 			info.totalChapters == 0 -> getString(R.string.no_chapters)
+			info.totalChapters == -1 -> getString(R.string.error_occurred)
 			else -> resources.getQuantityString(R.plurals.chapters, info.totalChapters, info.totalChapters)
 		}
 		buttonRead.setProgress(info.history?.percent?.coerceIn(0f, 1f) ?: 0f, true)
