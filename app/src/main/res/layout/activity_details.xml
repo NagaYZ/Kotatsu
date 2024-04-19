@@ -113,6 +113,7 @@
 				app:layout_constraintDimensionRatio="1"
 				app:layout_constraintStart_toEndOf="@id/imageView_cover"
 				app:layout_constraintTop_toTopOf="@id/textView_state"
+				app:tint="?colorTertiary"
 				tools:src="@drawable/ic_state_ongoing" />
 
 			<TextView
@@ -182,7 +183,6 @@
 				android:gravity="center"
 				android:paddingHorizontal="6dp"
 				android:paddingVertical="8dp"
-				android:textColor="?colorOnPrimaryContainer"
 				app:baseColor="?colorSecondaryContainer"
 				app:layout_constraintEnd_toStartOf="@id/button_chapters"
 				app:layout_constraintStart_toStartOf="parent"

@@ -6,33 +6,31 @@ import coil.ImageLoader
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.util.ext.defaultPlaceholders
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.enqueueWith
 import org.koitharu.kotatsu.core.util.ext.newImageRequest
 import org.koitharu.kotatsu.core.util.ext.source
 import org.koitharu.kotatsu.databinding.ItemFeedBinding
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.tracker.ui.feed.model.FeedItem
 
 fun feedItemAD(
 	coil: ImageLoader,
 	lifecycleOwner: LifecycleOwner,
-	clickListener: OnListItemClickListener<Manga>,
+	clickListener: OnListItemClickListener<FeedItem>,
 ) = adapterDelegateViewBinding<FeedItem, ListModel, ItemFeedBinding>(
 	{ inflater, parent -> ItemFeedBinding.inflate(inflater, parent, false) },
 ) {
 	val indicatorNew = ContextCompat.getDrawable(context, R.drawable.ic_new)
 
 	itemView.setOnClickListener {
-		clickListener.onItemClick(item.manga, it)
+		clickListener.onItemClick(item, it)
 	}
 
 	bind {
 		binding.imageViewCover.newImageRequest(lifecycleOwner, item.imageUrl)?.run {
-			placeholder(R.drawable.ic_placeholder)
-			fallback(R.drawable.ic_placeholder)
-			error(R.drawable.ic_error_placeholder)
+			defaultPlaceholders(context)
 			allowRgb565(true)
 			source(item.manga.source)
 			enqueueWith(coil)

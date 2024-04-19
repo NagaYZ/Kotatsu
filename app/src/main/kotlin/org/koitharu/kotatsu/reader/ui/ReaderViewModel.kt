@@ -130,6 +130,12 @@ class ReaderViewModel @Inject constructor(
 	val isWebtoonZooEnabled = observeIsWebtoonZoomEnabled()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, false)
 
+	val isWebtoonGapsEnabled = settings.observeAsStateFlow(
+		scope = viewModelScope + Dispatchers.Default,
+		key = AppSettings.KEY_WEBTOON_GAPS,
+		valueProducer = { isWebtoonGapsEnabled },
+	)
+
 	val defaultWebtoonZoomOut = observeIsWebtoonZoomEnabled().flatMapLatest {
 		if (it) {
 			observeWebtoonZoomOut()
@@ -431,6 +437,7 @@ class ReaderViewModel @Inject constructor(
 			currentPage = state.page,
 			isSliderEnabled = settings.isReaderSliderEnabled,
 			percent = computePercent(state.chapterId, state.page),
+			incognito = incognitoMode.value,
 		)
 		uiState.value = newState
 		if (!incognitoMode.value) {
@@ -454,7 +461,7 @@ class ReaderViewModel @Inject constructor(
 
 	private fun observeIsWebtoonZoomEnabled() = settings.observeAsFlow(
 		key = AppSettings.KEY_WEBTOON_ZOOM,
-		valueProducer = { isWebtoonZoomEnable },
+		valueProducer = { isWebtoonZoomEnabled },
 	)
 
 	private fun observeWebtoonZoomOut() = settings.observeAsFlow(

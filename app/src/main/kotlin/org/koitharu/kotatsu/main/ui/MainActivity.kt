@@ -14,6 +14,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
 import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
@@ -129,9 +130,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewModel.appUpdate.observe(this, MenuInvalidator(this))
 		viewModel.onFirstStart.observeEvent(this) {
 			WelcomeSheet.show(supportFragmentManager)
-		}
-		viewModel.isIncognitoMode.observe(this) {
-			adjustSearchUI(isSearchOpened(), false)
 		}
 		searchSuggestionViewModel.isIncognitoModeEnabled.observe(this, this::onIncognitoModeChanged)
 	}
@@ -262,12 +260,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		super.onSupportActionModeStarted(mode)
 		adjustFabVisibility()
 		bottomNav?.hide()
+		viewBinding.toolbarCard.isInvisible = true
 	}
 
 	override fun onSupportActionModeFinished(mode: ActionMode) {
 		super.onSupportActionModeFinished(mode)
 		adjustFabVisibility()
 		bottomNav?.show()
+		viewBinding.toolbarCard.isInvisible = false
 	}
 
 	private fun onOpenReader(manga: Manga) {
@@ -368,10 +368,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		adjustFabVisibility(isSearchOpened = isOpened)
 		supportActionBar?.apply {
 			setHomeAsUpIndicator(
-				when {
-					isOpened -> materialR.drawable.abc_ic_ab_back_material
-					viewModel.isIncognitoMode.value -> R.drawable.ic_incognito
-					else -> materialR.drawable.abc_ic_search_api_material
+				if (isOpened) {
+					materialR.drawable.abc_ic_ab_back_material
+				} else {
+					materialR.drawable.abc_ic_search_api_material
 				},
 			)
 			setHomeActionContentDescription(
