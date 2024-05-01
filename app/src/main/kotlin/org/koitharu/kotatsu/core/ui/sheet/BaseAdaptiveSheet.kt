@@ -12,6 +12,7 @@ import android.view.ViewGroup.LayoutParams
 import androidx.activity.ComponentDialog
 import androidx.activity.OnBackPressedDispatcher
 import androidx.annotation.CallSuper
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDialog
 import androidx.appcompat.app.AppCompatDialogFragment
 import androidx.appcompat.view.ActionMode
@@ -21,11 +22,16 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.viewbinding.ViewBinding
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.sidesheet.SideSheetDialog
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import com.google.android.material.R as materialR
@@ -44,10 +50,10 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 		get() = requireViewBinding()
 
 	protected val behavior: AdaptiveSheetBehavior?
-		get() = AdaptiveSheetBehavior.from(dialog)
+		get() = AdaptiveSheetBehavior.from(this)
 
-	@JvmField
-	val actionModeDelegate = ActionModeDelegate()
+	var actionModeDelegate: ActionModeDelegate? = null
+		private set
 
 	val isExpanded: Boolean
 		get() = behavior?.state == AdaptiveSheetBehavior.STATE_EXPANDED
@@ -72,11 +78,15 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 	final override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		val binding = requireViewBinding()
+		if (actionModeDelegate == null) {
+			actionModeDelegate = (activity as? BaseActivity<*>)?.actionModeDelegate
+		}
 		onViewBindingCreated(binding, savedInstanceState)
 	}
 
 	override fun onDestroyView() {
 		viewBinding = null
+		actionModeDelegate = null
 		super.onDestroyView()
 	}
 
@@ -87,13 +97,15 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 		} else {
 			BottomSheetDialogImpl(context, theme)
 		}
-		dialog.onBackPressedDispatcher.addCallback(actionModeDelegate)
+		actionModeDelegate = ActionModeDelegate().also {
+			dialog.onBackPressedDispatcher.addCallback(it)
+		}
 		return dialog
 	}
 
 	@CallSuper
 	protected open fun dispatchSupportActionModeStarted(mode: ActionMode) {
-		actionModeDelegate.onSupportActionModeStarted(mode)
+		actionModeDelegate?.onSupportActionModeStarted(mode)
 		val ctx = requireContext()
 		val actionModeColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
 			ColorUtils.compositeColors(
@@ -119,18 +131,21 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 
 	@CallSuper
 	protected open fun dispatchSupportActionModeFinished(mode: ActionMode) {
-		actionModeDelegate.onSupportActionModeFinished(mode)
+		actionModeDelegate?.onSupportActionModeFinished(mode)
 		dialog?.window?.statusBarColor = defaultStatusBarColor
 	}
 
-	fun addSheetCallback(callback: AdaptiveSheetCallback) {
-		val b = behavior ?: return
+	fun addSheetCallback(callback: AdaptiveSheetCallback, lifecycleOwner: LifecycleOwner): Boolean {
+		val b = behavior ?: return false
 		b.addCallback(callback)
 		val rootView = dialog?.findViewById<View>(materialR.id.design_bottom_sheet)
 			?: dialog?.findViewById(materialR.id.coordinator)
+			?: view
 		if (rootView != null) {
 			callback.onStateChanged(rootView, b.state)
 		}
+		lifecycleOwner.lifecycle.addObserver(CallbackRemoveObserver(b, callback))
+		return true
 	}
 
 	protected abstract fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): B
@@ -138,8 +153,9 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 	protected open fun onViewBindingCreated(binding: B, savedInstanceState: Bundle?) = Unit
 
 	fun startSupportActionMode(callback: ActionMode.Callback): ActionMode? {
-		val appCompatDialog = dialog as? AppCompatDialog ?: return null
-		return appCompatDialog.delegate.startSupportActionMode(callback)
+		val delegate =
+			(dialog as? AppCompatDialog)?.delegate ?: (activity as? AppCompatActivity)?.delegate ?: return null
+		return delegate.startSupportActionMode(callback)
 	}
 
 	protected fun setExpanded(isExpanded: Boolean, isLocked: Boolean) {
@@ -282,6 +298,18 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 			if (mode != null) {
 				dispatchSupportActionModeFinished(mode)
 			}
+		}
+	}
+
+	private class CallbackRemoveObserver(
+		private val behavior: AdaptiveSheetBehavior,
+		private val callback: AdaptiveSheetCallback,
+	) : DefaultLifecycleObserver {
+
+		override fun onDestroy(owner: LifecycleOwner) {
+			super.onDestroy(owner)
+			owner.lifecycle.removeObserver(this)
+			behavior.removeCallback(callback)
 		}
 	}
 }

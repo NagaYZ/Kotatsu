@@ -35,9 +35,10 @@
 	<dimen name="chapter_grid_width">80dp</dimen>
 	<dimen name="side_card_offset">8dp</dimen>
 	<dimen name="webtoon_pages_gap">24dp</dimen>
+	<dimen name="details_bs_peek_height">92dp</dimen>
 
-	<dimen name="search_suggestions_manga_height">124dp</dimen>
-	<dimen name="search_suggestions_manga_spacing">4dp</dimen>
+	<dimen name="search_suggestions_manga_height">142dp</dimen>
+	<dimen name="search_suggestions_manga_spacing">6dp</dimen>
 
 	<dimen name="card_indicator_size">32dp</dimen>
 	<dimen name="card_indicator_size_small">24dp</dimen>
@@ -72,6 +73,7 @@
 	<dimen name="fastscroll_scrollbar_padding_end">6dp</dimen>
 
 	<dimen name="m3_side_sheet_width">400dp</dimen>
+	<dimen name="m3_card_corner">12dp</dimen>
 
 	<dimen name="reader_scroll_delta_min">200dp</dimen>
 

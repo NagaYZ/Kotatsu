@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.flatten
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.sanitize
+import org.koitharu.kotatsu.core.util.ext.sizeOrZero
 import org.koitharu.kotatsu.core.util.ext.takeMostFrequent
 import org.koitharu.kotatsu.core.util.ext.toBitmapOrNull
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
@@ -273,6 +274,7 @@ class SuggestionsWorker @AssistedInject constructor(
 		with(builder) {
 			setContentText(tagsText)
 			setContentTitle(title)
+			setGroup(GROUP_SUGGESTION)
 			setLargeIcon(
 				coil.execute(
 					ImageRequest.Builder(applicationContext)
@@ -288,7 +290,7 @@ class SuggestionsWorker @AssistedInject constructor(
 				style.bigText(
 					buildSpannedString {
 						append(tagsText)
-						val chaptersCount = manga.chapters?.size ?: 0
+						val chaptersCount = manga.chapters.sizeOrZero()
 						appendLine()
 						bold {
 							append(
@@ -425,6 +427,7 @@ class SuggestionsWorker @AssistedInject constructor(
 		const val DATA_COUNT = "count"
 		const val WORKER_CHANNEL_ID = "suggestion_worker"
 		const val MANGA_CHANNEL_ID = "suggestions"
+		const val GROUP_SUGGESTION = "org.koitharu.kotatsu.SUGGESTIONS"
 		const val WORKER_NOTIFICATION_ID = 36
 		const val MAX_RESULTS = 80
 		const val MAX_PARALLELISM = 3

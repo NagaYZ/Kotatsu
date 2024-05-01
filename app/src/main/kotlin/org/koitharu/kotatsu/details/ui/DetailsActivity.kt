@@ -31,11 +31,13 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.transform.CircleCropTransformation
 import coil.util.CoilUtils
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.chip.Chip
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.filterNotNull
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
@@ -51,6 +53,7 @@ import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.image.ChipIconTarget
 import org.koitharu.kotatsu.core.ui.image.CoverSizeResolver
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.ui.util.BottomSheetClollapseCallback
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
@@ -66,6 +69,7 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.parentView
 import org.koitharu.kotatsu.core.util.ext.scaleUpActivityOptionsOf
+import org.koitharu.kotatsu.core.util.ext.setNavigationBarTransparentCompat
 import org.koitharu.kotatsu.core.util.ext.setOnContextClickListenerCompat
 import org.koitharu.kotatsu.core.util.ext.source
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
@@ -93,7 +97,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.ellipsize
-import org.koitharu.kotatsu.reader.ui.ReaderActivity.IntentBuilder
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.scrobbling.common.ui.selector.ScrobblingSelectorSheet
 import org.koitharu.kotatsu.search.ui.MangaListActivity
@@ -121,6 +125,7 @@ class DetailsActivity :
 	private val viewModel: DetailsViewModel by viewModels()
 
 	private lateinit var chaptersBadge: ViewBadge
+	private lateinit var menuProvider: DetailsMenuProvider
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -132,7 +137,7 @@ class DetailsActivity :
 		viewBinding.buttonRead.setOnClickListener(this)
 		viewBinding.buttonRead.setOnLongClickListener(this)
 		viewBinding.buttonRead.setOnContextClickListenerCompat(this)
-		viewBinding.buttonChapters?.setOnClickListener(this)
+		viewBinding.buttonDownload?.setOnClickListener(this)
 		viewBinding.infoLayout.chipBranch.setOnClickListener(this)
 		viewBinding.infoLayout.chipSize.setOnClickListener(this)
 		viewBinding.infoLayout.chipSource.setOnClickListener(this)
@@ -150,14 +155,20 @@ class DetailsActivity :
 		viewBinding.textViewDescription.movementMethod = LinkMovementMethodCompat.getInstance()
 		viewBinding.chipsTags.onChipClickListener = this
 		TitleScrollCoordinator(viewBinding.textViewTitle).attach(viewBinding.scrollView)
-
-		chaptersBadge = ViewBadge(viewBinding.buttonChapters ?: viewBinding.buttonRead, this)
+		viewBinding.containerBottomSheet?.let { BottomSheetBehavior.from(it) }?.let { behavior ->
+			onBackPressedDispatcher.addCallback(BottomSheetClollapseCallback(behavior))
+		}
+		chaptersBadge = ViewBadge(viewBinding.buttonRead, this)
 
 		viewModel.details.filterNotNull().observe(this, ::onMangaUpdated)
 		viewModel.onMangaRemoved.observeEvent(this, ::onMangaRemoved)
 		viewModel.newChaptersCount.observe(this, ::onNewChaptersChanged)
-		viewModel.onError.observeEvent(this, DetailsErrorObserver(this, viewModel, exceptionResolver))
-		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.scrollView, null))
+		viewModel.onError
+			.filterNot { ChaptersPagesSheet.isShown(supportFragmentManager) }
+			.observeEvent(this, DetailsErrorObserver(this, viewModel, exceptionResolver))
+		viewModel.onActionDone
+			.filterNot { ChaptersPagesSheet.isShown(supportFragmentManager) }
+			.observeEvent(this, ReversibleActionObserver(viewBinding.scrollView, null))
 		combine(viewModel.historyInfo, viewModel.isLoading, ::Pair).observe(this) {
 			onHistoryChanged(it.first, it.second)
 		}
@@ -177,23 +188,24 @@ class DetailsActivity :
 			viewBinding.infoLayout.chipBranch.isVisible = it.size > 1
 		}
 		viewModel.chapters.observe(this, PrefetchObserver(this))
-		viewModel.onDownloadStarted.observeEvent(this, DownloadStartedObserver(viewBinding.scrollView))
+		viewModel.onDownloadStarted
+			.filterNot { ChaptersPagesSheet.isShown(supportFragmentManager) }
+			.observeEvent(this, DownloadStartedObserver(viewBinding.scrollView))
 
-		addMenuProvider(
-			DetailsMenuProvider(
-				activity = this,
-				viewModel = viewModel,
-				snackbarHost = viewBinding.scrollView,
-				appShortcutManager = shortcutManager,
-			),
+		menuProvider = DetailsMenuProvider(
+			activity = this,
+			viewModel = viewModel,
+			snackbarHost = viewBinding.scrollView,
+			appShortcutManager = shortcutManager,
 		)
+		addMenuProvider(menuProvider)
 	}
 
 	override fun onClick(v: View) {
 		when (v.id) {
 			R.id.button_read -> openReader(isIncognitoMode = false)
 			R.id.chip_branch -> showBranchPopupMenu(v)
-			R.id.button_chapters -> ChaptersPagesSheet.show(supportFragmentManager)
+			R.id.button_download -> DownloadDialogHelper(v, viewModel).show(menuProvider)
 
 			R.id.chip_author -> {
 				val manga = viewModel.manga.value ?: return
@@ -308,7 +320,7 @@ class DetailsActivity :
 
 	override fun onItemClick(item: Bookmark, view: View) {
 		startActivity(
-			IntentBuilder(view.context).bookmark(item).incognito(true).build(),
+			ReaderActivity.IntentBuilder(view.context).bookmark(item).incognito(true).build(),
 		)
 		Toast.makeText(view.context, R.string.incognito_mode, Toast.LENGTH_SHORT).show()
 	}
@@ -409,7 +421,7 @@ class DetailsActivity :
 	}
 
 	private fun onLoadingStateChanged(isLoading: Boolean) {
-		val button = viewBinding.buttonChapters ?: return
+		val button = viewBinding.buttonDownload ?: return
 		if (isLoading) {
 			button.setImageDrawable(
 				CircularProgressDrawable(this).also {
@@ -419,7 +431,7 @@ class DetailsActivity :
 				},
 			)
 		} else {
-			button.setImageResource(R.drawable.ic_list_sheet)
+			button.setImageResource(R.drawable.ic_download)
 		}
 	}
 
@@ -517,20 +529,24 @@ class DetailsActivity :
 		viewBinding.scrollView.updatePadding(
 			bottom = insets.bottom,
 		)
+		viewBinding.containerBottomSheet?.let { bs ->
+			window.setNavigationBarTransparentCompat(this, bs.elevation, 0.9f)
+		}
 	}
 
 	private fun onHistoryChanged(info: HistoryInfo, isLoading: Boolean) = with(viewBinding) {
-		buttonRead.setTitle(if (info.history != null) R.string._continue else R.string.read)
+		buttonRead.setTitle(if (info.canContinue) R.string._continue else R.string.read)
 		buttonRead.subtitle = when {
 			isLoading -> getString(R.string.loading_)
 			info.isIncognitoMode -> getString(R.string.incognito_mode)
+			info.isChapterMissing -> getString(R.string.chapter_is_missing)
 			info.currentChapter >= 0 -> getString(R.string.chapter_d_of_d, info.currentChapter + 1, info.totalChapters)
 			info.totalChapters == 0 -> getString(R.string.no_chapters)
 			info.totalChapters == -1 -> getString(R.string.error_occurred)
 			else -> resources.getQuantityString(R.plurals.chapters, info.totalChapters, info.totalChapters)
 		}
 		buttonRead.setProgress(info.history?.percent?.coerceIn(0f, 1f) ?: 0f, true)
-		buttonChapters?.isEnabled = info.isValid
+		buttonDownload?.isEnabled = info.isValid && info.canDownload
 		buttonRead.isEnabled = info.isValid
 	}
 
@@ -590,7 +606,7 @@ class DetailsActivity :
 				.show()
 		} else {
 			startActivity(
-				IntentBuilder(this)
+				ReaderActivity.IntentBuilder(this)
 					.manga(manga)
 					.branch(viewModel.selectedBranchValue)
 					.incognito(isIncognitoMode)
