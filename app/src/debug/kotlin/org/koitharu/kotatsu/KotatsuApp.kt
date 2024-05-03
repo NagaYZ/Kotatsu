@@ -11,7 +11,7 @@ import org.koitharu.kotatsu.reader.domain.PageLoader
 
 class KotatsuApp : BaseApp() {
 
-	override fun attachBaseContext(base: Context?) {
+	override fun attachBaseContext(base: Context) {
 		super.attachBaseContext(base)
 		enableStrictMode()
 	}
