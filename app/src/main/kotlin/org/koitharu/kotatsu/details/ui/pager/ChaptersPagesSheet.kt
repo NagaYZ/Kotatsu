@@ -8,7 +8,6 @@ import androidx.appcompat.view.ActionMode
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.activityViewModels
-import androidx.lifecycle.Lifecycle
 import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
@@ -51,8 +50,11 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(), Actio
 		disableFitToContents()
 
 		val args = arguments ?: Bundle.EMPTY
-		val defaultTab = args.getInt(ARG_TAB, settings.defaultDetailsTab)
-		val adapter = ChaptersPagesAdapter(this, settings.isPagesTabEnabled || defaultTab == TAB_PAGES)
+		var defaultTab = args.getInt(ARG_TAB, settings.defaultDetailsTab)
+		val adapter = ChaptersPagesAdapter(this, settings.isPagesTabEnabled)
+		if (!adapter.isPagesTabEnabled) {
+			defaultTab = (defaultTab - 1).coerceAtLeast(TAB_CHAPTERS)
+		}
 		binding.pager.offscreenPageLimit = adapter.itemCount
 		binding.pager.adapter = adapter
 		binding.pager.doOnPageChanged(::onPageChanged)
@@ -71,10 +73,12 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(), Actio
 		actionModeDelegate?.addListener(this, viewLifecycleOwner)
 		addSheetCallback(this, viewLifecycleOwner)
 
-		viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.pager, this))
-		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager, null))
-		viewModel.onDownloadStarted.observeEvent(viewLifecycleOwner, DownloadStartedObserver(binding.pager))
 		viewModel.newChaptersCount.observe(viewLifecycleOwner, ::onNewChaptersChanged)
+		if (dialog != null) {
+			viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.pager, this))
+			viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager, null))
+			viewModel.onDownloadStarted.observeEvent(viewLifecycleOwner, DownloadStartedObserver(binding.pager))
+		}
 	}
 
 	override fun onStateChanged(sheet: View, newState: Int) {
@@ -134,9 +138,6 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(), Actio
 		const val TAB_PAGES = 1
 		const val TAB_BOOKMARKS = 2
 		private const val ARG_TAB = "tag"
-
-		@Deprecated("")
-		private const val ARG_SHOW_PAGES = "pages"
 		private const val TAG = "ChaptersPagesSheet"
 
 		fun show(fm: FragmentManager) {
@@ -151,7 +152,7 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(), Actio
 
 		fun isShown(fm: FragmentManager): Boolean {
 			val sheet = fm.findFragmentByTag(TAG) as? ChaptersPagesSheet
-			return sheet != null && sheet.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+			return sheet?.dialog?.isShowing == true
 		}
 	}
 }
