@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.core.util.AcraScreenLogger
 import org.koitharu.kotatsu.core.util.ext.connectivityManager
 import org.koitharu.kotatsu.core.util.ext.isLowRamDevice
 import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageFetcher
+import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageKeyer
 import org.koitharu.kotatsu.local.data.CacheDir
 import org.koitharu.kotatsu.local.data.CbzFetcher
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -54,6 +55,7 @@ import org.koitharu.kotatsu.search.ui.MangaSuggestionsProvider
 import org.koitharu.kotatsu.settings.backup.BackupObserver
 import org.koitharu.kotatsu.sync.domain.SyncController
 import org.koitharu.kotatsu.widget.WidgetUpdater
+import javax.inject.Provider
 import javax.inject.Singleton
 
 @Module
@@ -86,7 +88,7 @@ interface AppModule {
 		@Singleton
 		fun provideCoil(
 			@ApplicationContext context: Context,
-			@MangaHttpClient okHttpClient: OkHttpClient,
+			@MangaHttpClient okHttpClientProvider: Provider<OkHttpClient>,
 			mangaRepositoryFactory: MangaRepository.Factory,
 			imageProxyInterceptor: ImageProxyInterceptor,
 			pageFetcherFactory: MangaPageFetcher.Factory,
@@ -98,11 +100,14 @@ interface AppModule {
 					.directory(rootDir.resolve(CacheDir.THUMBS.dir))
 					.build()
 			}
+			val okHttpClientLazy = lazy {
+				okHttpClientProvider.get().newBuilder().cache(null).build()
+			}
 			return ImageLoader.Builder(context)
-				.okHttpClient(okHttpClient.newBuilder().cache(null).build())
+				.okHttpClient { okHttpClientLazy.value }
 				.interceptorDispatcher(Dispatchers.Default)
-				.fetcherDispatcher(Dispatchers.IO)
-				.decoderDispatcher(Dispatchers.Default)
+				.fetcherDispatcher(Dispatchers.Default)
+				.decoderDispatcher(Dispatchers.IO)
 				.transformationDispatcher(Dispatchers.Default)
 				.diskCache(diskCacheFactory)
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
@@ -112,7 +117,8 @@ interface AppModule {
 					ComponentRegistry.Builder()
 						.add(SvgDecoder.Factory())
 						.add(CbzFetcher.Factory())
-						.add(FaviconFetcher.Factory(context, okHttpClient, mangaRepositoryFactory))
+						.add(FaviconFetcher.Factory(context, okHttpClientLazy, mangaRepositoryFactory))
+						.add(MangaPageKeyer())
 						.add(pageFetcherFactory)
 						.add(imageProxyInterceptor)
 						.add(coverRestoreInterceptor)

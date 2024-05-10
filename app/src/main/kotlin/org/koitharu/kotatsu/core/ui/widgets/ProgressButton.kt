@@ -16,11 +16,13 @@ import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.appcompat.widget.LinearLayoutCompat
 import androidx.core.content.withStyledAttributes
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.children
 import androidx.core.widget.TextViewCompat
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.getAnimationDuration
 import org.koitharu.kotatsu.core.util.ext.getThemeColorStateList
+import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 import org.koitharu.kotatsu.core.util.ext.resolveDp
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
@@ -37,9 +39,13 @@ class ProgressButton @JvmOverloads constructor(
 	private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
 	private var progress = 0f
+	private var targetProgress = 0f
 	private var colorBase: ColorStateList = ColorStateList.valueOf(Color.TRANSPARENT)
 	private var colorProgress: ColorStateList = ColorStateList.valueOf(Color.TRANSPARENT)
 	private var progressAnimator: ValueAnimator? = null
+
+	private var colorBaseCurrent = colorProgress.defaultColor
+	private var colorProgressCurrent = colorProgress.defaultColor
 
 	var title: CharSequence?
 		get() = textViewTitle.textAndVisible
@@ -97,10 +103,19 @@ class ProgressButton @JvmOverloads constructor(
 
 	override fun onDraw(canvas: Canvas) {
 		super.onDraw(canvas)
-		canvas.drawColor(colorBase.getColorForState(drawableState, colorBase.defaultColor))
-		paint.color = colorProgress.getColorForState(drawableState, colorProgress.defaultColor)
-		paint.alpha = 84 // 255 * 0.33F
-		canvas.drawRect(0f, 0f, width * progress, height.toFloat(), paint)
+		canvas.drawColor(colorBaseCurrent)
+		if (progress > 0f) {
+			canvas.drawRect(0f, 0f, width * progress, height.toFloat(), paint)
+		}
+	}
+
+	override fun drawableStateChanged() {
+		super.drawableStateChanged()
+		val state = drawableState
+		colorBaseCurrent = colorBase.getColorForState(state, colorBase.defaultColor)
+		colorProgressCurrent = colorProgress.getColorForState(state, colorProgress.defaultColor)
+		colorProgressCurrent = ColorUtils.setAlphaComponent(colorProgressCurrent, 84 /* 255 * 0.33F */)
+		paint.color = colorProgressCurrent
 	}
 
 	override fun setGravity(gravity: Int) {
@@ -116,8 +131,10 @@ class ProgressButton @JvmOverloads constructor(
 	}
 
 	override fun onAnimationUpdate(animation: ValueAnimator) {
-		progress = animation.animatedValue as Float
-		invalidate()
+		if (animation === progressAnimator) {
+			progress = animation.animatedValue as Float
+			invalidate()
+		}
 	}
 
 	fun setTitle(@StringRes titleResId: Int) {
@@ -129,19 +146,25 @@ class ProgressButton @JvmOverloads constructor(
 	}
 
 	fun setProgress(value: Float, animate: Boolean) {
-		progressAnimator?.cancel()
-		if (animate) {
+		val prevAnimator = progressAnimator
+		if (animate && context.isAnimationsEnabled) {
+			if (value == targetProgress) {
+				return
+			}
+			targetProgress = value
 			progressAnimator = ValueAnimator.ofFloat(progress, value).apply {
-				duration = context.getAnimationDuration(android.R.integer.config_shortAnimTime)
+				duration = context.getAnimationDuration(android.R.integer.config_mediumAnimTime)
 				interpolator = AccelerateDecelerateInterpolator()
 				addUpdateListener(this@ProgressButton)
-				start()
 			}
+			progressAnimator?.start()
 		} else {
 			progressAnimator = null
 			progress = value
+			targetProgress = value
 			invalidate()
 		}
+		prevAnimator?.cancel()
 	}
 
 	private fun applyGravity() {

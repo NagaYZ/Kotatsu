@@ -58,7 +58,6 @@ import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.FileSize
-import org.koitharu.kotatsu.core.util.ViewBadge
 import org.koitharu.kotatsu.core.util.ext.crossfade
 import org.koitharu.kotatsu.core.util.ext.defaultPlaceholders
 import org.koitharu.kotatsu.core.util.ext.enqueueWith
@@ -182,7 +181,8 @@ class DetailsActivity :
 		viewModel.isStatsAvailable.observe(this, menuInvalidator)
 		viewModel.remoteManga.observe(this, menuInvalidator)
 		viewModel.branches.observe(this) {
-			viewBinding.infoLayout.chipBranch.isVisible = it.size > 1
+			viewBinding.infoLayout.chipBranch.isVisible = it.size > 1 || it.firstOrNull() != null
+			viewBinding.infoLayout.chipBranch.isCloseIconVisible = it.size > 1
 		}
 		viewModel.chapters.observe(this, PrefetchObserver(this))
 		viewModel.onDownloadStarted
@@ -533,14 +533,19 @@ class DetailsActivity :
 			info.totalChapters == -1 -> getString(R.string.error_occurred)
 			else -> resources.getQuantityString(R.plurals.chapters, info.totalChapters, info.totalChapters)
 		}
-		buttonRead.setProgress(info.history?.percent?.coerceIn(0f, 1f) ?: 0f, true)
+		val isFirstCall = buttonRead.tag == null
+		buttonRead.tag = Unit
+		buttonRead.setProgress(info.history?.percent?.coerceIn(0f, 1f) ?: 0f, !isFirstCall)
 		buttonDownload?.isEnabled = info.isValid && info.canDownload
 		buttonRead.isEnabled = info.isValid
 	}
 
 	private fun showBranchPopupMenu(v: View) {
-		val menu = PopupMenu(v.context, v)
 		val branches = viewModel.branches.value
+		if (branches.size <= 1) {
+			return
+		}
+		val menu = PopupMenu(v.context, v)
 		for ((i, branch) in branches.withIndex()) {
 			val title = buildSpannedString {
 				if (branch.isCurrent) {
@@ -584,8 +589,7 @@ class DetailsActivity :
 
 	private fun openReader(isIncognitoMode: Boolean) {
 		val manga = viewModel.manga.value ?: return
-		val chapterId = viewModel.historyInfo.value.history?.chapterId
-		if (chapterId != null && manga.chapters?.none { x -> x.id == chapterId } == true) {
+		if (viewModel.historyInfo.value.isChapterMissing) {
 			Snackbar.make(viewBinding.scrollView, R.string.chapter_is_missing, Snackbar.LENGTH_SHORT)
 				.show()
 		} else {

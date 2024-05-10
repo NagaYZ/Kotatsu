@@ -8,10 +8,12 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.Insets
+import androidx.core.view.ancestors
 import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -22,6 +24,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.ui.util.PagerNestedScrollHelper
 import org.koitharu.kotatsu.core.util.RecyclerViewScrollCallback
 import org.koitharu.kotatsu.core.util.ext.dismissParentDialog
 import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
@@ -80,7 +83,7 @@ class ChaptersFragment :
 			addItemDecoration(TypedListSpacingDecoration(context, true))
 			checkNotNull(selectionController).attachToRecyclerView(this)
 			setHasFixedSize(true)
-			isNestedScrollingEnabled = false
+			PagerNestedScrollHelper(this).bind(viewLifecycleOwner)
 			adapter = chaptersAdapter
 			ChapterGridSpanHelper.attach(this)
 		}
@@ -99,17 +102,6 @@ class ChaptersFragment :
 		chaptersAdapter = null
 		selectionController = null
 		super.onDestroyView()
-	}
-
-	override fun onPause() {
-		// required for BottomSheetBehavior
-		requireViewBinding().recyclerViewChapters.isNestedScrollingEnabled = false
-		super.onPause()
-	}
-
-	override fun onResume() {
-		requireViewBinding().recyclerViewChapters.isNestedScrollingEnabled = true
-		super.onResume()
 	}
 
 	override fun onItemClick(item: ChapterListItem, view: View) {
@@ -270,6 +262,9 @@ class ChaptersFragment :
 	}
 
 	private suspend fun onSelectChapter(chapterId: Long) {
+		if (!isResumed) {
+			view?.ancestors?.firstNotNullOfOrNull { it as? ViewPager2 }?.setCurrentItem(0, true)
+		}
 		val position = withContext(Dispatchers.Default) {
 			val predicate: (ListModel) -> Boolean = { x -> x is ChapterListItem && x.chapter.id == chapterId }
 			val items = chaptersAdapter?.observeItems()?.firstOrNull { it.any(predicate) }
