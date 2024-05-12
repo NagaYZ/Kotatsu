@@ -18,6 +18,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -31,6 +32,7 @@ import org.koitharu.kotatsu.core.util.ext.source
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.util.mapNotNullToSet
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.search.ui.MangaListActivity
@@ -88,6 +90,14 @@ class AppShortcutManager @Inject constructor(
 	} catch (e: IllegalStateException) {
 		e.printStackTraceDebug()
 		false
+	}
+
+	fun getMangaShortcuts(): Set<Long> {
+		val shortcuts = ShortcutManagerCompat.getShortcuts(
+			context,
+			ShortcutManagerCompat.FLAG_MATCH_CACHED or ShortcutManagerCompat.FLAG_MATCH_PINNED or ShortcutManagerCompat.FLAG_MATCH_DYNAMIC,
+		)
+		return shortcuts.mapNotNullToSet { it.id.toLongOrNull() }
 	}
 
 	@VisibleForTesting
@@ -150,7 +160,7 @@ class AppShortcutManager @Inject constructor(
 			.build()
 	}
 
-	private suspend fun buildShortcutInfo(source: MangaSource): ShortcutInfoCompat {
+	private suspend fun buildShortcutInfo(source: MangaSource): ShortcutInfoCompat = withContext(Dispatchers.Default) {
 		val icon = runCatchingCancellable {
 			coil.execute(
 				ImageRequest.Builder(context)
@@ -163,7 +173,7 @@ class AppShortcutManager @Inject constructor(
 			onSuccess = { IconCompat.createWithAdaptiveBitmap(it) },
 			onFailure = { IconCompat.createWithResource(context, R.drawable.ic_shortcut_default) },
 		)
-		return ShortcutInfoCompat.Builder(context, source.name)
+		ShortcutInfoCompat.Builder(context, source.name)
 			.setShortLabel(source.title)
 			.setLongLabel(source.title)
 			.setIcon(icon)

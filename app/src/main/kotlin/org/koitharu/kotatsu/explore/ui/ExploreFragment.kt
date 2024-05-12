@@ -4,11 +4,11 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.widget.PopupMenu
-import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.Insets
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
@@ -17,22 +17,21 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksActivity
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
-import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.dialog.TwoButtonsAlertDialog
+import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.ui.util.SpanSizeResolver
 import org.koitharu.kotatsu.core.ui.widgets.TipView
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
+import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
-import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.databinding.FragmentExploreBinding
 import org.koitharu.kotatsu.details.ui.DetailsActivity
 import org.koitharu.kotatsu.download.ui.list.DownloadsActivity
@@ -44,6 +43,7 @@ import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.TipModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.util.mapNotNullToSet
 import org.koitharu.kotatsu.search.ui.MangaListActivity
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.newsources.NewSourcesDialogFragment
@@ -56,16 +56,14 @@ class ExploreFragment :
 	BaseFragment<FragmentExploreBinding>(),
 	RecyclerViewOwner,
 	ExploreListEventListener,
-	OnListItemClickListener<MangaSourceItem>, TipView.OnButtonClickListener {
+	OnListItemClickListener<MangaSourceItem>, TipView.OnButtonClickListener, ListSelectionController.Callback2 {
 
 	@Inject
 	lateinit var coil: ImageLoader
 
-	@Inject
-	lateinit var shortcutManager: AppShortcutManager
-
 	private val viewModel by viewModels<ExploreViewModel>()
 	private var exploreAdapter: ExploreAdapter? = null
+	private var sourceSelectionController: ListSelectionController? = null
 
 	override val recyclerView: RecyclerView
 		get() = requireViewBinding().recyclerView
@@ -79,11 +77,18 @@ class ExploreFragment :
 		exploreAdapter = ExploreAdapter(coil, viewLifecycleOwner, this, this, this) { manga, view ->
 			startActivity(DetailsActivity.newIntent(view.context, manga))
 		}
+		sourceSelectionController = ListSelectionController(
+			appCompatDelegate = checkNotNull(findAppCompatDelegate()),
+			decoration = SourceSelectionDecoration(binding.root.context),
+			registryOwner = this,
+			callback = this,
+		)
 		with(binding.recyclerView) {
 			adapter = exploreAdapter
 			setHasFixedSize(true)
 			SpanSizeResolver(this, resources.getDimensionPixelSize(R.dimen.explore_grid_width)).attach()
 			addItemDecoration(TypedListSpacingDecoration(context, false))
+			checkNotNull(sourceSelectionController).attachToRecyclerView(this)
 		}
 		addMenuProvider(ExploreMenuProvider(binding.root.context))
 		viewModel.content.observe(viewLifecycleOwner) {
@@ -100,6 +105,7 @@ class ExploreFragment :
 
 	override fun onDestroyView() {
 		super.onDestroyView()
+		sourceSelectionController = null
 		exploreAdapter = null
 	}
 
@@ -147,24 +153,67 @@ class ExploreFragment :
 	}
 
 	override fun onItemClick(item: MangaSourceItem, view: View) {
+		if (sourceSelectionController?.onItemClick(item.id) == true) {
+			return
+		}
 		val intent = MangaListActivity.newIntent(view.context, item.source)
 		startActivity(intent)
 	}
 
 	override fun onItemLongClick(item: MangaSourceItem, view: View): Boolean {
-		val menu = PopupMenu(view.context, view)
-		menu.inflate(R.menu.popup_source)
-		menu.menu.findItem(R.id.action_shortcut)
-			?.isVisible = ShortcutManagerCompat.isRequestPinShortcutSupported(view.context)
-		menu.setOnMenuItemClickListener(SourceMenuListener(item))
-		menu.show()
-		return true
+		return sourceSelectionController?.onItemLongClick(item.id) ?: false
 	}
 
 	override fun onRetryClick(error: Throwable) = Unit
 
 	override fun onEmptyActionClick() {
 		startActivity(Intent(context ?: return, SourcesCatalogActivity::class.java))
+	}
+
+	override fun onSelectionChanged(controller: ListSelectionController, count: Int) {
+		viewBinding?.recyclerView?.invalidateItemDecorations()
+	}
+
+	override fun onCreateActionMode(controller: ListSelectionController, mode: ActionMode, menu: Menu): Boolean {
+		mode.menuInflater.inflate(R.menu.mode_source, menu)
+		return true
+	}
+
+	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode, menu: Menu): Boolean {
+		val isSingleSelection = controller.count == 1
+		menu.findItem(R.id.action_settings).isVisible = isSingleSelection
+		menu.findItem(R.id.action_shortcut).isVisible = isSingleSelection
+		return super.onPrepareActionMode(controller, mode, menu)
+	}
+
+	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode, item: MenuItem): Boolean {
+		val selectedSources = controller.peekCheckedIds().mapNotNullToSet { id ->
+			MangaSource.entries.getOrNull(id.toInt())
+		}
+		if (selectedSources.isEmpty()) {
+			return false
+		}
+		when (item.itemId) {
+			R.id.action_settings -> {
+				val source = selectedSources.singleOrNull() ?: return false
+				startActivity(SettingsActivity.newSourceSettingsIntent(requireContext(), source))
+				mode.finish()
+			}
+
+			R.id.action_disable -> {
+				viewModel.disableSources(selectedSources)
+				mode.finish()
+			}
+
+			R.id.action_shortcut -> {
+				val source = selectedSources.singleOrNull() ?: return false
+				viewModel.requestPinShortcut(source)
+				mode.finish()
+			}
+
+			else -> return false
+		}
+		return true
 	}
 
 	private fun onOpenManga(manga: Manga) {
@@ -193,31 +242,5 @@ class ExploreFragment :
 			.setNegativeButton(R.string.no_thanks, listener)
 			.create()
 			.show()
-	}
-
-	private inner class SourceMenuListener(
-		private val sourceItem: MangaSourceItem,
-	) : PopupMenu.OnMenuItemClickListener {
-
-		override fun onMenuItemClick(item: MenuItem): Boolean {
-			when (item.itemId) {
-				R.id.action_settings -> {
-					startActivity(SettingsActivity.newSourceSettingsIntent(requireContext(), sourceItem.source))
-				}
-
-				R.id.action_hide -> {
-					viewModel.hideSource(sourceItem.source)
-				}
-
-				R.id.action_shortcut -> {
-					viewLifecycleScope.launch {
-						shortcutManager.requestPinShortcut(sourceItem.source)
-					}
-				}
-
-				else -> return false
-			}
-			return true
-		}
 	}
 }

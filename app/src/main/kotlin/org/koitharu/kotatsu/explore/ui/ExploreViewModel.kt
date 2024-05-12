@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
@@ -43,6 +44,7 @@ class ExploreViewModel @Inject constructor(
 	private val suggestionRepository: SuggestionRepository,
 	private val exploreRepository: ExploreRepository,
 	private val sourcesRepository: MangaSourcesRepository,
+	private val shortcutManager: AppShortcutManager,
 ) : BaseViewModel() {
 
 	val isGrid = settings.observeAsStateFlow(
@@ -92,16 +94,23 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
-	fun hideSource(source: MangaSource) {
+	fun disableSources(sources: Collection<MangaSource>) {
 		launchJob(Dispatchers.Default) {
-			val rollback = sourcesRepository.setSourceEnabled(source, isEnabled = false)
-			onActionDone.call(ReversibleAction(R.string.source_disabled, rollback))
+			val rollback = sourcesRepository.setSourcesEnabled(sources, isEnabled = false)
+			val message = if (sources.size == 1) R.string.source_disabled else R.string.sources_disabled
+			onActionDone.call(ReversibleAction(message, rollback))
 		}
 	}
 
 	fun discardNewSources() {
 		launchJob(Dispatchers.Default) {
 			sourcesRepository.assimilateNewSources()
+		}
+	}
+
+	fun requestPinShortcut(source: MangaSource) {
+		launchLoadingJob(Dispatchers.Default) {
+			shortcutManager.requestPinShortcut(source)
 		}
 	}
 

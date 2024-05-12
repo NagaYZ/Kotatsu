@@ -17,7 +17,6 @@ import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
-import org.koitharu.kotatsu.parsers.model.ContentType
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import java.util.Collections
@@ -48,8 +47,17 @@ class MangaSourcesRepository @Inject constructor(
 		return dao.findAllEnabled(order).toSources(settings.isNsfwContentDisabled, order)
 	}
 
-	suspend fun getDisabledSources(): List<MangaSource> {
-		return dao.findAllDisabled().toSources(settings.isNsfwContentDisabled, null)
+	suspend fun getDisabledSources(): Set<MangaSource> {
+		val result = EnumSet.copyOf(remoteSources)
+		val enabled = dao.findAllEnabledNames()
+		for (name in enabled) {
+			val source = MangaSource(name)
+			result.remove(source)
+		}
+		if (settings.isNsfwContentDisabled) {
+			result.removeAll { it.isNsfw() }
+		}
+		return result
 	}
 
 	fun observeIsEnabled(source: MangaSource): Flow<Boolean> {
@@ -97,10 +105,10 @@ class MangaSourcesRepository @Inject constructor(
 		result
 	}
 
-	suspend fun setSourceEnabled(source: MangaSource, isEnabled: Boolean): ReversibleHandle {
-		dao.setEnabled(source.name, isEnabled)
+	suspend fun setSourcesEnabled(sources: Collection<MangaSource>, isEnabled: Boolean): ReversibleHandle {
+		setSourcesEnabledImpl(sources, isEnabled)
 		return ReversibleHandle {
-			dao.setEnabled(source.name, !isEnabled)
+			setSourcesEnabledImpl(sources, !isEnabled)
 		}
 	}
 
@@ -143,6 +151,7 @@ class MangaSourcesRepository @Inject constructor(
 				result
 			}.distinctUntilChanged()
 		} else {
+			assimilateNewSources()
 			flowOf(emptySet())
 		}
 	}
@@ -171,6 +180,18 @@ class MangaSourcesRepository @Inject constructor(
 		return dao.findAll().isEmpty()
 	}
 
+	private suspend fun setSourcesEnabledImpl(sources: Collection<MangaSource>, isEnabled: Boolean) {
+		if (sources.size == 1) { // fast path
+			dao.setEnabled(sources.first().name, isEnabled)
+			return
+		}
+		db.withTransaction {
+			for (source in sources) {
+				dao.setEnabled(source.name, isEnabled)
+			}
+		}
+	}
+
 	private suspend fun getNewSources(): MutableSet<MangaSource> {
 		val entities = dao.findAll()
 		val result = EnumSet.copyOf(remoteSources)
@@ -187,7 +208,7 @@ class MangaSourcesRepository @Inject constructor(
 		val result = ArrayList<MangaSource>(size)
 		for (entity in this) {
 			val source = MangaSource(entity.source)
-			if (skipNsfwSources && source.contentType == ContentType.HENTAI) {
+			if (skipNsfwSources && source.isNsfw()) {
 				continue
 			}
 			if (source in remoteSources) {
