@@ -380,14 +380,18 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			}
 		}
 
-	val isImagesProxyEnabled: Boolean
-		get() = prefs.getBoolean(KEY_IMAGES_PROXY, false)
+	val imagesProxy: Int
+		get() {
+			val raw = prefs.getString(KEY_IMAGES_PROXY, null)?.toIntOrNull()
+			return raw ?: if (prefs.getBoolean(KEY_IMAGES_PROXY_OLD, false)) 0 else -1
+		}
 
 	val dnsOverHttps: DoHProvider
 		get() = prefs.getEnumValue(KEY_DOH, DoHProvider.NONE)
 
-	val isSSLBypassEnabled: Boolean
+	var isSSLBypassEnabled: Boolean
 		get() = prefs.getBoolean(KEY_SSL_BYPASS, false)
+		set(value) = prefs.edit { putBoolean(KEY_SSL_BYPASS, value) }
 
 	val proxyType: Proxy.Type
 		get() {
@@ -547,8 +551,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	companion object {
 
-		const val PAGE_SWITCH_VOLUME_KEYS = "volume"
-
 		const val TRACK_HISTORY = "history"
 		const val TRACK_FAVOURITES = "favourites"
 
@@ -662,7 +664,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_PROXY_AUTH = "proxy_auth"
 		const val KEY_PROXY_LOGIN = "proxy_login"
 		const val KEY_PROXY_PASSWORD = "proxy_password"
-		const val KEY_IMAGES_PROXY = "images_proxy"
+		const val KEY_IMAGES_PROXY = "images_proxy_2"
 		const val KEY_LOCAL_MANGA_DIRS = "local_manga_dirs"
 		const val KEY_DISABLE_NSFW = "no_nsfw"
 		const val KEY_RELATED_MANGA = "related_manga"
@@ -688,5 +690,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_APP_TRANSLATION = "about_app_translation"
 		const val KEY_FEED_HEADER = "feed_header"
 		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
+
+		// old keys are for migration only
+		private const val KEY_IMAGES_PROXY_OLD = "images_proxy"
 	}
 }
