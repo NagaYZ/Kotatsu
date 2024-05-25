@@ -16,8 +16,8 @@ android {
 		applicationId 'org.koitharu.kotatsu'
 		minSdk = 21
 		targetSdk = 34
-		versionCode = 643
-		versionName = '7.1'
+		versionCode = 644
+		versionName = '7.1.1'
 		generatedDensities = []
 		testInstrumentationRunner 'org.koitharu.kotatsu.HiltTestRunner'
 		ksp {
@@ -82,7 +82,7 @@ afterEvaluate {
 }
 dependencies {
 	//noinspection GradleDependency
-	implementation('com.github.KotatsuApp:kotatsu-parsers:d218ad5a67') {
+	implementation('com.github.KotatsuApp:kotatsu-parsers:51da0b62c1') {
 		exclude group: 'org.json', module: 'json'
 	}
 
@@ -94,6 +94,7 @@ dependencies {
 	implementation 'androidx.core:core-ktx:1.13.1'
 	implementation 'androidx.activity:activity-ktx:1.9.0'
 	implementation 'androidx.fragment:fragment-ktx:1.7.1'
+	implementation 'androidx.transition:transition-ktx:1.5.0'
 	implementation 'androidx.collection:collection-ktx:1.4.0'
 	implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.0'
 	implementation 'androidx.lifecycle:lifecycle-service:2.8.0'
