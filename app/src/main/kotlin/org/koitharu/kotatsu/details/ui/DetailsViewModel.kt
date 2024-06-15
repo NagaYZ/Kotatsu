@@ -93,15 +93,19 @@ class DetailsViewModel @Inject constructor(
 
 	val details = MutableStateFlow(intent.manga?.let { MangaDetails(it, null, null, false) })
 	val manga = details.map { x -> x?.toManga() }
+		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val history = historyRepository.observeOne(mangaId)
+		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val favouriteCategories = interactor.observeFavourite(mangaId)
+		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptySet())
 
 	val isStatsAvailable = statsRepository.observeHasStats(mangaId)
+		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val remoteManga = MutableStateFlow<Manga?>(null)
@@ -162,7 +166,7 @@ class DetailsViewModel @Inject constructor(
 
 	val onMangaRemoved = MutableEventFlow<Manga>()
 	val isScrobblingAvailable: Boolean
-		get() = scrobblers.any { it.isAvailable }
+		get() = scrobblers.any { it.isEnabled }
 
 	val scrobblingInfo: StateFlow<List<ScrobblingInfo>> = interactor.observeScrobblingInfo(mangaId)
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
@@ -393,7 +397,7 @@ class DetailsViewModel @Inject constructor(
 	private fun getScrobbler(index: Int): Scrobbler? {
 		val info = scrobblingInfo.value.getOrNull(index)
 		val scrobbler = if (info != null) {
-			scrobblers.find { it.scrobblerService == info.scrobbler && it.isAvailable }
+			scrobblers.find { it.scrobblerService == info.scrobbler && it.isEnabled }
 		} else {
 			null
 		}
