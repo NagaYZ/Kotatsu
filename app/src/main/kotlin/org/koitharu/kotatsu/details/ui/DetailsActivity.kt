@@ -463,7 +463,7 @@ class DetailsActivity :
 				imageViewState.isVisible = false
 			}
 
-			if (manga.source == MangaSource.LOCAL || manga.source == MangaSource.DUMMY) {
+			if (manga.source == MangaSource.LOCAL || manga.source == MangaSource.UNKNOWN) {
 				infoLayout.chipSource.isVisible = false
 			} else {
 				infoLayout.chipSource.text = manga.source.title
@@ -538,7 +538,7 @@ class DetailsActivity :
 		}
 		val isFirstCall = buttonRead.tag == null
 		buttonRead.tag = Unit
-		buttonRead.setProgress(info.history?.percent?.coerceIn(0f, 1f) ?: 0f, !isFirstCall)
+		buttonRead.setProgress(info.percent.coerceIn(0f, 1f), !isFirstCall)
 		buttonDownload?.isEnabled = info.isValid && info.canDownload
 		buttonRead.isEnabled = info.isValid
 	}
