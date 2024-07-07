@@ -123,7 +123,6 @@ class DetailsActivity :
 	lateinit var tagHighlighter: ListExtraProvider
 
 	private val viewModel: DetailsViewModel by viewModels()
-
 	private lateinit var menuProvider: DetailsMenuProvider
 
 	override fun onCreate(savedInstanceState: Bundle?) {
@@ -157,6 +156,7 @@ class DetailsActivity :
 		viewBinding.containerBottomSheet?.let { sheet ->
 			onBackPressedDispatcher.addCallback(BottomSheetCollapseCallback(sheet))
 		}
+		TitleExpandListener(viewBinding.textViewTitle).attach()
 
 		viewModel.details.filterNotNull().observe(this, ::onMangaUpdated)
 		viewModel.onMangaRemoved.observeEvent(this, ::onMangaRemoved)
