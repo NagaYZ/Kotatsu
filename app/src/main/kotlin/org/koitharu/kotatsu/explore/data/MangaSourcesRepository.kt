@@ -101,7 +101,7 @@ class MangaSourcesRepository @Inject constructor(
 			skipNsfwSources = settings.isNsfwContentDisabled,
 			sortOrder = sortOrder,
 		).run {
-			filterIsInstanceTo(ArrayList<MangaParserSource>(size))
+			mapNotNullTo(ArrayList(size)) { it.mangaSource as? MangaParserSource }
 		}
 		if (locale != null) {
 			sources.retainAll { it.locale == locale }
@@ -314,7 +314,7 @@ class MangaSourcesRepository @Inject constructor(
 			}
 		}
 		if (sortOrder == SourcesSortOrder.ALPHABETIC) {
-			result.sortWith(compareBy<MangaSourceInfo> { it.isPinned }.thenBy { it.getTitle(context) })
+			result.sortWith(compareBy<MangaSourceInfo> { !it.isPinned }.thenBy { it.getTitle(context) })
 		}
 		return result
 	}
