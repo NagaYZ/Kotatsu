@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.list.domain
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.parsers.model.MangaTag
 
@@ -55,6 +56,8 @@ sealed interface ListFilterOption {
 		val tag: MangaTag
 	) : ListFilterOption {
 
+		val tagId: Long = tag.toEntity().id
+
 		override val titleResId: Int
 			get() = 0
 
@@ -83,5 +86,16 @@ sealed interface ListFilterOption {
 
 		override val groupKey: String
 			get() = "_favcat"
+	}
+
+	data class Inverted(
+		val option: ListFilterOption,
+		override val iconResId: Int,
+		override val titleResId: Int,
+		override val titleText: CharSequence?,
+	) : ListFilterOption {
+
+		override val groupKey: String
+			get() = "_inv" + option.groupKey
 	}
 }

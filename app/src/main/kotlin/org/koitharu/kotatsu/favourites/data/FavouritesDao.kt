@@ -11,13 +11,15 @@ import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import org.intellij.lang.annotations.Language
-import org.koitharu.kotatsu.core.db.entity.toEntity
+import org.koitharu.kotatsu.core.db.MangaQueryBuilder
+import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.favourites.domain.model.Cover
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
+import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
 
 @Dao
-abstract class FavouritesDao {
+abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	/** SELECT **/
 
@@ -54,41 +56,23 @@ abstract class FavouritesDao {
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
 		limit: Int
-	): Flow<List<FavouriteManga>> {
-		val orderBy = getOrderBy(order)
-		val query = buildString {
-			append(
-				"SELECT * FROM favourites LEFT JOIN manga ON favourites.manga_id = manga.manga_id " +
-					"WHERE deleted_at = 0",
-			)
-			if (categoryId != 0L) {
-				append(" AND category_id = ")
-				append(categoryId)
-			}
-			val groupedOptions = filterOptions.groupBy { it.groupKey }
-			for ((_, group) in groupedOptions) {
-				if (group.isEmpty()) {
-					continue
-				}
-				append(" AND ")
-				if (group.size > 1) {
-					group.joinTo(this, separator = " OR ", prefix = "(", postfix = ")") {
-						it.getCondition()
-					}
+	): Flow<List<FavouriteManga>> = observeAllImpl(
+		MangaQueryBuilder(TABLE_FAVOURITES, this)
+			.join("LEFT JOIN manga ON favourites.manga_id = manga.manga_id")
+			.where("deleted_at = 0")
+			.where(
+				if (categoryId != 0L) {
+					"category_id = $categoryId"
 				} else {
-					append(group.single().getCondition())
-				}
-			}
-			append(" GROUP BY favourites.manga_id ORDER BY ")
-			append(orderBy)
-			if (limit > 0) {
-				append(" LIMIT ")
-				append(limit)
-			}
-		}
-
-		return observeAllImpl(SimpleSQLiteQuery(query))
-	}
+					"(SELECT show_in_lib FROM favourite_categories WHERE favourite_categories.category_id = favourites.category_id) = 1"
+				},
+			)
+			.filters(filterOptions)
+			.groupBy("favourites.manga_id")
+			.orderBy(getOrderBy(order))
+			.limit(limit)
+			.build(),
+	)
 
 	suspend fun findCovers(categoryId: Long, order: ListSortOrder): List<Cover> {
 		val orderBy = getOrderBy(order)
@@ -110,7 +94,9 @@ abstract class FavouritesDao {
 		val query = SimpleSQLiteQuery(
 			"SELECT manga.cover_url AS url, manga.source AS source FROM favourites " +
 				"LEFT JOIN manga ON favourites.manga_id = manga.manga_id " +
-				"WHERE deleted_at = 0 GROUP BY manga.manga_id ORDER BY $orderBy LIMIT ?",
+				"WHERE deleted_at = 0 AND " +
+				"(SELECT show_in_lib FROM favourite_categories WHERE favourite_categories.category_id = favourites.category_id) = 1 " +
+				"GROUP BY manga.manga_id ORDER BY $orderBy LIMIT ?",
 			arrayOf<Any>(limit),
 		)
 		return findCoversImpl(query)
@@ -128,8 +114,12 @@ abstract class FavouritesDao {
 	@Query("SELECT favourite_categories.* FROM favourites LEFT JOIN favourite_categories ON favourite_categories.category_id = favourites.category_id WHERE favourites.manga_id = :mangaId AND favourites.deleted_at = 0")
 	abstract fun observeCategories(mangaId: Long): Flow<List<FavouriteCategoryEntity>>
 
+	@Deprecated("")
 	@Query("SELECT DISTINCT category_id FROM favourites WHERE manga_id IN (:mangaIds) AND deleted_at = 0 ORDER BY favourites.created_at ASC")
 	abstract suspend fun findCategoriesIds(mangaIds: Collection<Long>): List<Long>
+
+	@Query("SELECT DISTINCT category_id FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0 ORDER BY favourites.created_at ASC")
+	abstract suspend fun findCategoriesIds(mangaId: Long): List<Long>
 
 	@Query("SELECT COUNT(category_id) FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0")
 	abstract suspend fun findCategoriesCount(mangaId: Long): Int
@@ -208,13 +198,11 @@ abstract class FavouritesDao {
 		else -> throw IllegalArgumentException("Sort order $sortOrder is not supported")
 	}
 
-	private fun ListFilterOption.getCondition(): String = when (this) {
-		ListFilterOption.Macro.COMPLETED -> "EXISTS(SELECT * FROM history WHERE history.manga_id = favourites.manga_id AND history.percent >= 0.9999)"
+	override fun getCondition(option: ListFilterOption): String? = when (option) {
+		ListFilterOption.Macro.COMPLETED -> "EXISTS(SELECT * FROM history WHERE history.manga_id = favourites.manga_id AND history.percent >= $PROGRESS_COMPLETED)"
 		ListFilterOption.Macro.NEW_CHAPTERS -> "(SELECT chapters_new FROM tracks WHERE tracks.manga_id = favourites.manga_id) > 0"
 		ListFilterOption.Macro.NSFW -> "manga.nsfw = 1"
-		is ListFilterOption.Tag -> "EXISTS(SELECT * FROM manga_tags WHERE favourites.manga_id = manga_tags.manga_id AND tag_id = ${tag.toEntity().id})"
-		ListFilterOption.Downloaded,
-		is ListFilterOption.Favorite,
-		ListFilterOption.Macro.FAVORITE -> throw IllegalArgumentException("Unsupported option $this")
+		is ListFilterOption.Tag -> "EXISTS(SELECT * FROM manga_tags WHERE favourites.manga_id = manga_tags.manga_id AND tag_id = ${option.tagId})"
+		else -> null
 	}
 }
