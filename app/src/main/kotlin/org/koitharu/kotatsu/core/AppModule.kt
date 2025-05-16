@@ -1,18 +1,23 @@
 package org.koitharu.kotatsu.core
 
 import android.app.Application
-import android.content.ContentResolver
 import android.content.Context
+import android.os.Build
 import android.provider.SearchRecentSuggestions
 import android.text.Html
 import androidx.collection.arraySetOf
+import androidx.core.content.ContextCompat
 import androidx.room.InvalidationTracker
 import androidx.work.WorkManager
-import coil.ComponentRegistry
-import coil.ImageLoader
-import coil.decode.SvgDecoder
-import coil.disk.DiskCache
-import coil.util.DebugLogger
+import coil3.ImageLoader
+import coil3.disk.DiskCache
+import coil3.disk.directory
+import coil3.gif.AnimatedImageDecoder
+import coil3.gif.GifDecoder
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.allowRgb565
+import coil3.svg.SvgDecoder
+import coil3.util.DebugLogger
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -28,6 +33,9 @@ import okhttp3.OkHttpClient
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.browser.cloudflare.CaptchaNotifier
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.image.AvifImageDecoder
+import org.koitharu.kotatsu.core.image.CbzFetcher
+import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -44,7 +52,6 @@ import org.koitharu.kotatsu.core.util.ext.isLowRamDevice
 import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageFetcher
 import org.koitharu.kotatsu.details.ui.pager.pages.MangaPageKeyer
 import org.koitharu.kotatsu.local.data.CacheDir
-import org.koitharu.kotatsu.local.data.CbzFetcher
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.main.domain.CoverRestoreInterceptor
@@ -71,6 +78,12 @@ interface AppModule {
 	companion object {
 
 		@Provides
+		@LocalizedAppContext
+		fun provideLocalizedContext(
+			@ApplicationContext context: Context,
+		): Context = ContextCompat.getContextForLanguage(context)
+
+		@Provides
 		@Singleton
 		fun provideNetworkState(
 			@ApplicationContext context: Context,
@@ -81,19 +94,18 @@ interface AppModule {
 		@Singleton
 		fun provideMangaDatabase(
 			@ApplicationContext context: Context,
-		): MangaDatabase {
-			return MangaDatabase(context)
-		}
+		): MangaDatabase = MangaDatabase(context)
 
 		@Provides
 		@Singleton
 		fun provideCoil(
-			@ApplicationContext context: Context,
+			@LocalizedAppContext context: Context,
 			@MangaHttpClient okHttpClientProvider: Provider<OkHttpClient>,
 			mangaRepositoryFactory: MangaRepository.Factory,
 			imageProxyInterceptor: ImageProxyInterceptor,
 			pageFetcherFactory: MangaPageFetcher.Factory,
 			coverRestoreInterceptor: CoverRestoreInterceptor,
+			networkStateProvider: Provider<NetworkState>,
 		): ImageLoader {
 			val diskCacheFactory = {
 				val rootDir = context.externalCacheDir ?: context.cacheDir
@@ -105,36 +117,39 @@ interface AppModule {
 				okHttpClientProvider.get().newBuilder().cache(null).build()
 			}
 			return ImageLoader.Builder(context)
-				.okHttpClient { okHttpClientLazy.value }
-				.interceptorDispatcher(Dispatchers.Default)
-				.fetcherDispatcher(Dispatchers.Default)
-				.decoderDispatcher(Dispatchers.IO)
-				.transformationDispatcher(Dispatchers.Default)
+				.interceptorCoroutineContext(Dispatchers.Default)
 				.diskCache(diskCacheFactory)
-				.respectCacheHeaders(false)
-				.networkObserverEnabled(false)
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
 				.allowRgb565(context.isLowRamDevice())
 				.eventListener(CaptchaNotifier(context))
-				.components(
-					ComponentRegistry.Builder()
-						.add(SvgDecoder.Factory())
-						.add(CbzFetcher.Factory())
-						.add(FaviconFetcher.Factory(context, okHttpClientLazy, mangaRepositoryFactory))
-						.add(MangaPageKeyer())
-						.add(pageFetcherFactory)
-						.add(imageProxyInterceptor)
-						.add(coverRestoreInterceptor)
-						.build(),
-				).build()
+				.components {
+					add(
+						OkHttpNetworkFetcherFactory(
+							callFactory = okHttpClientLazy::value,
+							connectivityChecker = { networkStateProvider.get() },
+						),
+					)
+					if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+						add(AnimatedImageDecoder.Factory())
+					} else {
+						add(GifDecoder.Factory())
+					}
+					add(SvgDecoder.Factory())
+					add(CbzFetcher.Factory())
+					add(AvifImageDecoder.Factory())
+					add(FaviconFetcher.Factory(mangaRepositoryFactory))
+					add(MangaPageKeyer())
+					add(pageFetcherFactory)
+					add(imageProxyInterceptor)
+					add(coverRestoreInterceptor)
+					add(MangaSourceHeaderInterceptor())
+				}.build()
 		}
 
 		@Provides
 		fun provideSearchSuggestions(
 			@ApplicationContext context: Context,
-		): SearchRecentSuggestions {
-			return MangaSuggestionsProvider.createSuggestions(context)
-		}
+		): SearchRecentSuggestions = MangaSuggestionsProvider.createSuggestions(context)
 
 		@Provides
 		@ElementsIntoSet

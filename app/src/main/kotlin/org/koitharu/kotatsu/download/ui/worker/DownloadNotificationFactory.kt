@@ -12,43 +12,47 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.PendingIntentCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.work.WorkManager
-import coil.ImageLoader
-import coil.request.ImageRequest
-import coil.size.Scale
+import coil3.ImageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.size.Scale
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ErrorReporterReceiver
+import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
 import org.koitharu.kotatsu.core.util.ext.isReportable
+import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
-import org.koitharu.kotatsu.details.ui.DetailsActivity
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.DownloadsActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.format
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.search.ui.MangaListActivity
 import java.util.UUID
-import com.google.android.material.R as materialR
+import androidx.appcompat.R as appcompatR
 
-private const val CHANNEL_ID = "download"
+private const val CHANNEL_ID_DEFAULT = "download"
+private const val CHANNEL_ID_SILENT = "download_bg"
 private const val GROUP_ID = "downloads"
 
 class DownloadNotificationFactory @AssistedInject constructor(
-	@ApplicationContext private val context: Context,
+	@LocalizedAppContext private val context: Context,
 	private val workManager: WorkManager,
 	private val coil: ImageLoader,
 	@Assisted private val uuid: UUID,
+	@Assisted val isSilent: Boolean,
 ) {
 
 	private val covers = HashMap<Manga, Drawable>()
-	private val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+	private val builder = NotificationCompat.Builder(context, if (isSilent) CHANNEL_ID_SILENT else CHANNEL_ID_DEFAULT)
 	private val mutex = Mutex()
 
 	private val coverWidth = context.resources.getDimensionPixelSize(
@@ -67,7 +71,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	private val actionCancel by lazy {
 		NotificationCompat.Action(
-			materialR.drawable.material_ic_clear_black_24dp,
+			appcompatR.drawable.abc_ic_clear_material,
 			context.getString(android.R.string.cancel),
 			workManager.createCancelPendingIntent(uuid),
 		)
@@ -106,14 +110,18 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	init {
-		createChannel()
+		createChannels()
 		builder.setOnlyAlertOnce(true)
 		builder.setDefaults(0)
-		builder.foregroundServiceBehavior = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
+		builder.foregroundServiceBehavior = if (isSilent) {
+			NotificationCompat.FOREGROUND_SERVICE_DEFERRED
+		} else {
+			NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
+		}
 		builder.setSilent(true)
 		builder.setGroup(GROUP_ID)
 		builder.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-		builder.priority = NotificationCompat.PRIORITY_DEFAULT
+		builder.priority = if (isSilent) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_DEFAULT
 	}
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
@@ -133,10 +141,10 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.setSubText(null)
 		builder.setShowWhen(false)
 		builder.setVisibility(
-			if (state != null && state.manga.isNsfw) {
-				NotificationCompat.VISIBILITY_PRIVATE
+			if (state != null && state.manga.isNsfw()) {
+				NotificationCompat.VISIBILITY_SECRET
 			} else {
-				NotificationCompat.VISIBILITY_PUBLIC
+				NotificationCompat.VISIBILITY_PRIVATE
 			},
 		)
 		when {
@@ -207,13 +215,15 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.setWhen(System.currentTimeMillis())
 				builder.setStyle(NotificationCompat.BigTextStyle().bigText(state.errorMessage))
 				if (state.error.isReportable()) {
-					builder.addAction(
-						NotificationCompat.Action(
-							0,
-							context.getString(R.string.report),
-							ErrorReporterReceiver.getPendingIntent(context, state.error),
-						),
-					)
+					ErrorReporterReceiver.getPendingIntent(context, state.error)?.let { reportIntent ->
+						builder.addAction(
+							NotificationCompat.Action(
+								0,
+								context.getString(R.string.report),
+								reportIntent,
+							),
+						)
+					}
 				}
 			}
 
@@ -257,9 +267,9 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		context,
 		manga.hashCode(),
 		if (manga != null) {
-			DetailsActivity.newIntent(context, manga)
+			AppRouter.detailsIntent(context, manga)
 		} else {
-			MangaListActivity.newIntent(context, LocalMangaSource)
+			AppRouter.listIntent(context, LocalMangaSource, null, null)
 		},
 		PendingIntent.FLAG_CANCEL_CURRENT,
 		false,
@@ -271,7 +281,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				ImageRequest.Builder(context)
 					.data(manga.coverUrl)
 					.allowHardware(false)
-					.tag(manga.source)
+					.mangaSourceExtra(manga.source)
 					.size(coverWidth, coverHeight)
 					.scale(Scale.FILL)
 					.build(),
@@ -283,20 +293,30 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		}.getOrNull()
 	}
 
-	private fun createChannel() {
+	private fun createChannels() {
 		val manager = NotificationManagerCompat.from(context)
-		val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
-			.setName(context.getString(R.string.downloads))
-			.setVibrationEnabled(false)
-			.setLightsEnabled(false)
-			.setSound(null, null)
-			.build()
-		manager.createNotificationChannel(channel)
+		manager.createNotificationChannel(
+			NotificationChannelCompat.Builder(CHANNEL_ID_DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW)
+				.setName(context.getString(R.string.downloads))
+				.setVibrationEnabled(false)
+				.setLightsEnabled(false)
+				.setSound(null, null)
+				.build(),
+		)
+		manager.createNotificationChannel(
+			NotificationChannelCompat.Builder(CHANNEL_ID_SILENT, NotificationManagerCompat.IMPORTANCE_MIN)
+				.setName(context.getString(R.string.downloads_background))
+				.setVibrationEnabled(false)
+				.setLightsEnabled(false)
+				.setSound(null, null)
+				.setShowBadge(false)
+				.build(),
+		)
 	}
 
 	@AssistedFactory
 	interface Factory {
 
-		fun create(uuid: UUID): DownloadNotificationFactory
+		fun create(uuid: UUID, isSilent: Boolean): DownloadNotificationFactory
 	}
 }

@@ -1,9 +1,9 @@
 package org.koitharu.kotatsu.details.ui.adapter
 
 import android.graphics.Typeface
+import androidx.appcompat.widget.TooltipCompat
 import androidx.core.view.isVisible
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
-import org.koitharu.kotatsu.core.model.formatNumber
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.util.ext.getThemeColorStateList
@@ -18,13 +18,12 @@ fun chapterGridItemAD(
 	on = { item, _, _ -> item is ChapterListItem && item.isGrid },
 ) {
 
-	val eventListener = AdapterDelegateClickListenerAdapter(this, clickListener)
-	itemView.setOnClickListener(eventListener)
-	itemView.setOnLongClickListener(eventListener)
+	AdapterDelegateClickListenerAdapter(this, clickListener).attach(itemView)
 
 	bind { payloads ->
 		if (payloads.isEmpty()) {
-			binding.textViewTitle.text = item.chapter.formatNumber() ?: "?"
+			binding.textViewTitle.text = item.chapter.numberString() ?: "?"
+			TooltipCompat.setTooltipText(itemView, item.chapter.title)
 		}
 		binding.imageViewNew.isVisible = item.isNew
 		binding.imageViewCurrent.isVisible = item.isCurrent

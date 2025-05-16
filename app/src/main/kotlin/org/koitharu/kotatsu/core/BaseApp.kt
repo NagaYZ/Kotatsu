@@ -11,8 +11,8 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.acra.ACRA
 import org.acra.ReportField
 import org.acra.config.dialog
@@ -25,9 +25,14 @@ import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.os.AppValidator
+import org.koitharu.kotatsu.core.os.RomCompat
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.WorkServiceStopHelper
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.local.data.LocalStorageChanges
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
+import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
 import java.security.Security
 import javax.inject.Inject
@@ -60,6 +65,13 @@ open class BaseApp : Application(), Configuration.Provider {
 	@Inject
 	lateinit var workManagerProvider: Provider<WorkManager>
 
+	@Inject
+	lateinit var localMangaIndexProvider: Provider<LocalMangaIndex>
+
+	@Inject
+	@LocalStorageChanges
+	lateinit var localStorageChanges: MutableSharedFlow<LocalManga?>
+
 	override val workManagerConfiguration: Configuration
 		get() = Configuration.Builder()
 			.setWorkerFactory(workerFactory)
@@ -67,21 +79,22 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	override fun onCreate() {
 		super.onCreate()
+		if (ACRA.isACRASenderServiceProcess()) {
+			return
+		}
 		AppCompatDelegate.setDefaultNightMode(settings.theme)
-		AppCompatDelegate.setApplicationLocales(settings.appLocales)
 		// TLS 1.3 support for Android < 10
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
 			Security.insertProviderAt(Conscrypt.newProvider(), 1)
 		}
 		setupActivityLifecycleCallbacks()
 		processLifecycleScope.launch {
-			val isOriginalApp = withContext(Dispatchers.Default) {
-				appValidator.isOriginalApp
-			}
-			ACRA.errorReporter.putCustomData("isOriginalApp", isOriginalApp.toString())
+			ACRA.errorReporter.putCustomData("isOriginalApp", appValidator.isOriginalApp.getOrNull().toString())
+			ACRA.errorReporter.putCustomData("isMiui", RomCompat.isMiui.getOrNull().toString())
 		}
 		processLifecycleScope.launch(Dispatchers.Default) {
 			setupDatabaseObservers()
+			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
 		workScheduleManager.init()
 		WorkServiceStopHelper(workManagerProvider).setup()
@@ -89,6 +102,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	override fun attachBaseContext(base: Context) {
 		super.attachBaseContext(base)
+		if (ACRA.isACRASenderServiceProcess()) {
+			return
+		}
 		initAcra {
 			buildConfigClass = BuildConfig::class.java
 			reportFormat = StringFormat.JSON

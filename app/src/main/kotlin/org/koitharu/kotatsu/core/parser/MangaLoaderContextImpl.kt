@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.core.parser
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.util.Base64
 import android.webkit.WebView
 import androidx.annotation.MainThread
@@ -16,19 +15,24 @@ import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.asResponseBody
 import okio.Buffer
+import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
+import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.ext.configureForParser
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
-import org.koitharu.kotatsu.core.util.ext.requireBody
 import org.koitharu.kotatsu.core.util.ext.sanitizeHeaderValue
 import org.koitharu.kotatsu.core.util.ext.toList
+import org.koitharu.kotatsu.core.util.ext.toMimeType
+import org.koitharu.kotatsu.core.util.ext.use
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
+import org.koitharu.kotatsu.parsers.MangaParser
 import org.koitharu.kotatsu.parsers.bitmap.Bitmap
 import org.koitharu.kotatsu.parsers.config.MangaSourceConfig
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.network.UserAgents
+import org.koitharu.kotatsu.parsers.util.map
 import java.lang.ref.WeakReference
 import java.util.Locale
 import javax.inject.Inject
@@ -75,33 +79,30 @@ class MangaLoaderContextImpl @Inject constructor(
 		return LocaleListCompat.getAdjustedDefault().toList()
 	}
 
+	override fun requestBrowserAction(
+		parser: MangaParser,
+		url: String,
+	): Nothing = throw InteractiveActionRequiredException(parser.source, url)
+
 	override fun redrawImageResponse(response: Response, redraw: (image: Bitmap) -> Bitmap): Response {
-		val image = response.requireBody().byteStream()
-
-		val opts = BitmapFactory.Options()
-		opts.inMutable = true
-		val bitmap = BitmapFactory.decodeStream(image, null, opts) ?: error("Cannot decode bitmap")
-		val result = redraw(BitmapWrapper.create(bitmap)) as BitmapWrapper
-
-		val body = Buffer().also {
-			result.compressTo(it.outputStream())
-		}.asResponseBody("image/jpeg".toMediaType())
-
-		return response.newBuilder()
-			.body(body)
-			.build()
+		return response.map { body ->
+			BitmapDecoderCompat.decode(body.byteStream(), body.contentType()?.toMimeType(), isMutable = true)
+				.use { bitmap ->
+					(redraw(BitmapWrapper.create(bitmap)) as BitmapWrapper).use { result ->
+						Buffer().also {
+							result.compressTo(it.outputStream())
+						}.asResponseBody("image/jpeg".toMediaType())
+					}
+				}
+		}
 	}
 
-	override fun createBitmap(width: Int, height: Int): Bitmap {
-		return BitmapWrapper.create(width, height)
-	}
+	override fun createBitmap(width: Int, height: Int): Bitmap = BitmapWrapper.create(width, height)
 
 	@MainThread
-	private fun obtainWebView(): WebView {
-		return webViewCached?.get() ?: WebView(androidContext).also {
-			it.configureForParser(null)
-			webViewCached = WeakReference(it)
-		}
+	private fun obtainWebView(): WebView = webViewCached?.get() ?: WebView(androidContext).also {
+		it.configureForParser(null)
+		webViewCached = WeakReference(it)
 	}
 
 	private fun obtainWebViewUserAgent(): String {

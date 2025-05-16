@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.history.data
 
+import android.database.DatabaseUtils.sqlEscapeString
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -10,6 +11,7 @@ import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
+import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
@@ -21,6 +23,18 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Transaction
 	@Query("SELECT * FROM history WHERE deleted_at = 0 ORDER BY updated_at DESC LIMIT :limit OFFSET :offset")
 	abstract suspend fun findAll(offset: Int, limit: Int): List<HistoryWithManga>
+
+	@Transaction
+	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query) LIMIT :limit")
+	abstract suspend fun searchByTitle(query: String, limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND (manga.author LIKE :query) LIMIT :limit")
+	abstract suspend fun searchByAuthor(query: String, limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND EXISTS(SELECT 1 FROM tags LEFT JOIN manga_tags ON manga_tags.tag_id = tags.tag_id WHERE manga_tags.manga_id = manga.manga_id AND tags.title LIKE :query) LIMIT :limit")
+	abstract suspend fun searchByTag(query: String, limit: Int): List<MangaWithTags>
 
 	@Transaction
 	@Query("SELECT * FROM history WHERE deleted_at = 0 ORDER BY updated_at DESC")
@@ -73,6 +87,9 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findPopularTags(limit: Int): List<TagEntity>
 
+	@Query("SELECT manga.source AS count FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit")
+	abstract suspend fun findPopularSources(limit: Int): List<String>
+
 	@Query("SELECT * FROM history WHERE manga_id = :id AND deleted_at = 0")
 	abstract suspend fun find(id: Long): HistoryEntity?
 
@@ -113,6 +130,8 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	suspend fun deleteAfter(minDate: Long) = setDeletedAtAfter(minDate, System.currentTimeMillis())
 
+	suspend fun deleteNotFavorite() = setDeletedAtNotFavorite(System.currentTimeMillis())
+
 	suspend fun clear() = setDeletedAtAfter(0L, System.currentTimeMillis())
 
 	suspend fun update(entity: HistoryEntity) = update(
@@ -148,6 +167,9 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Query("UPDATE history SET deleted_at = :deletedAt WHERE created_at >= :minDate AND deleted_at = 0")
 	protected abstract suspend fun setDeletedAtAfter(minDate: Long, deletedAt: Long)
 
+	@Query("UPDATE history SET deleted_at = :deletedAt WHERE deleted_at = 0 AND NOT EXISTS(SELECT * FROM favourites WHERE history.manga_id = favourites.manga_id)")
+	protected abstract suspend fun setDeletedAtNotFavorite(deletedAt: Long)
+
 	@Transaction
 	@RawQuery(observedEntities = [HistoryEntity::class])
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<HistoryWithManga>>
@@ -159,6 +181,8 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		ListFilterOption.Macro.FAVORITE -> "EXISTS(SELECT * FROM favourites WHERE history.manga_id = favourites.manga_id)"
 		ListFilterOption.Macro.NSFW -> "manga.nsfw = 1"
 		is ListFilterOption.Tag -> "EXISTS(SELECT * FROM manga_tags WHERE history.manga_id = manga_tags.manga_id AND tag_id = ${option.tagId})"
+		ListFilterOption.Downloaded -> "EXISTS(SELECT * FROM local_index WHERE local_index.manga_id = history.manga_id)"
+		is ListFilterOption.Source -> "manga.source = ${sqlEscapeString(option.mangaSource.name)}"
 		else -> null
 	}
 }

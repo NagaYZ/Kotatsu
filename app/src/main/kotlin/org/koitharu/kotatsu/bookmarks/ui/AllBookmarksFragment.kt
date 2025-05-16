@@ -3,33 +3,34 @@ package org.koitharu.kotatsu.bookmarks.ui
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
-import androidx.core.graphics.Insets
-import androidx.core.view.updateLayoutParams
-import androidx.core.view.updatePadding
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
-import coil.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.bookmarks.ui.adapter.BookmarksAdapter
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
+import org.koitharu.kotatsu.core.nav.ReaderIntent
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScroller
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.core.util.ext.consumeAllSystemBarsInsets
 import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.core.util.ext.systemBarsInsets
 import org.koitharu.kotatsu.databinding.FragmentListSimpleBinding
-import org.koitharu.kotatsu.details.ui.DetailsActivity
 import org.koitharu.kotatsu.list.ui.GridSpanResolver
 import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
@@ -38,7 +39,7 @@ import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.reader.ui.ReaderActivity
+import org.koitharu.kotatsu.reader.ui.PageSaveHelper
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -46,18 +47,24 @@ class AllBookmarksFragment :
 	BaseFragment<FragmentListSimpleBinding>(),
 	ListStateHolderListener,
 	OnListItemClickListener<Bookmark>,
-	ListSelectionController.Callback2,
+	ListSelectionController.Callback,
 	FastScroller.FastScrollListener, ListHeaderClickListener {
-
-	@Inject
-	lateinit var coil: ImageLoader
 
 	@Inject
 	lateinit var settings: AppSettings
 
+	@Inject
+	lateinit var pageSaveHelperFactory: PageSaveHelper.Factory
+
+	private lateinit var pageSaveHelper: PageSaveHelper
 	private val viewModel by viewModels<AllBookmarksViewModel>()
 	private var bookmarksAdapter: BookmarksAdapter? = null
 	private var selectionController: ListSelectionController? = null
+
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		pageSaveHelper = pageSaveHelperFactory.create(this)
+	}
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -78,8 +85,6 @@ class AllBookmarksFragment :
 			callback = this,
 		)
 		bookmarksAdapter = BookmarksAdapter(
-			lifecycleOwner = viewLifecycleOwner,
-			coil = coil,
 			clickListener = this,
 			headerClickListener = this,
 		)
@@ -106,6 +111,18 @@ class AllBookmarksFragment :
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.recyclerView))
 	}
 
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val barsInsets = insets.systemBarsInsets
+		val basePadding = resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
+		viewBinding?.recyclerView?.setPadding(
+			barsInsets.left + basePadding,
+			barsInsets.top + basePadding,
+			barsInsets.right + basePadding,
+			barsInsets.bottom + basePadding,
+		)
+		return insets.consumeAllSystemBarsInsets()
+	}
+
 	override fun onDestroyView() {
 		super.onDestroyView()
 		bookmarksAdapter = null
@@ -114,22 +131,26 @@ class AllBookmarksFragment :
 
 	override fun onItemClick(item: Bookmark, view: View) {
 		if (selectionController?.onItemClick(item.pageId) != true) {
-			val intent = ReaderActivity.IntentBuilder(view.context)
+			val intent = ReaderIntent.Builder(view.context)
 				.bookmark(item)
-				.incognito(true)
+				.incognito()
 				.build()
-			startActivity(intent)
+			router.openReader(intent)
 			Toast.makeText(view.context, R.string.incognito_mode, Toast.LENGTH_SHORT).show()
 		}
 	}
 
 	override fun onListHeaderClick(item: ListHeader, view: View) {
 		val manga = item.payload as? Manga ?: return
-		startActivity(DetailsActivity.newIntent(view.context, manga))
+		router.openDetails(manga)
 	}
 
 	override fun onItemLongClick(item: Bookmark, view: View): Boolean {
-		return selectionController?.onItemLongClick(item.pageId) ?: false
+		return selectionController?.onItemLongClick(view, item.pageId) == true
+	}
+
+	override fun onItemContextClick(item: Bookmark, view: View): Boolean {
+		return selectionController?.onItemContextClick(view, item.pageId) == true
 	}
 
 	override fun onRetryClick(error: Throwable) = Unit
@@ -148,37 +169,33 @@ class AllBookmarksFragment :
 
 	override fun onCreateActionMode(
 		controller: ListSelectionController,
-		mode: ActionMode,
+		menuInflater: MenuInflater,
 		menu: Menu,
 	): Boolean {
-		mode.menuInflater.inflate(R.menu.mode_bookmarks, menu)
+		menuInflater.inflate(R.menu.mode_bookmarks, menu)
 		return true
 	}
 
 	override fun onActionItemClicked(
 		controller: ListSelectionController,
-		mode: ActionMode,
+		mode: ActionMode?,
 		item: MenuItem,
 	): Boolean {
 		return when (item.itemId) {
 			R.id.action_remove -> {
 				val ids = selectionController?.snapshot() ?: return false
 				viewModel.removeBookmarks(ids)
-				mode.finish()
+				mode?.finish()
+				true
+			}
+
+			R.id.action_save -> {
+				viewModel.savePages(pageSaveHelper, selectionController?.snapshot() ?: return false)
+				mode?.finish()
 				true
 			}
 
 			else -> false
-		}
-	}
-
-	override fun onWindowInsetsChanged(insets: Insets) {
-		val rv = requireViewBinding().recyclerView
-		rv.updatePadding(
-			bottom = insets.bottom + rv.paddingTop,
-		)
-		rv.fastScroller.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-			bottomMargin = insets.bottom
 		}
 	}
 
@@ -202,17 +219,5 @@ class AllBookmarksFragment :
 			invalidateSpanGroupIndexCache()
 			invalidateSpanIndexCache()
 		}
-	}
-
-	companion object {
-
-		@Deprecated(
-			"",
-			ReplaceWith(
-				"BookmarksFragment()",
-				"org.koitharu.kotatsu.bookmarks.ui.BookmarksFragment",
-			),
-		)
-		fun newInstance() = AllBookmarksFragment()
 	}
 }

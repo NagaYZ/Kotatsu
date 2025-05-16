@@ -9,17 +9,17 @@
 	android:gravity="center_vertical"
 	android:minHeight="?listPreferredItemHeightSmall"
 	android:orientation="horizontal"
-	android:paddingVertical="@dimen/margin_small"
 	android:paddingStart="?listPreferredItemPaddingStart"
-	android:paddingEnd="?listPreferredItemPaddingEnd">
+	tools:ignore="RtlSymmetry">
 
-	<com.google.android.material.imageview.ShapeableImageView
+	<org.koitharu.kotatsu.core.ui.image.FaviconView
 		android:id="@+id/imageView_icon"
 		android:layout_width="32dp"
 		android:layout_height="32dp"
 		android:background="?colorControlHighlight"
 		android:labelFor="@id/textView_title"
 		android:scaleType="fitCenter"
+		app:iconStyle="@style/FaviconDrawable.Small"
 		app:shapeAppearance="?shapeAppearanceCornerSmall"
 		tools:src="@tools:sample/avatars" />
 
@@ -58,17 +58,16 @@
 	<View
 		android:layout_width="1dp"
 		android:layout_height="match_parent"
-		android:layout_marginVertical="4dp"
+		android:layout_marginVertical="@dimen/margin_small"
 		android:background="?colorOutline" />
 
-	<ImageView
+	<ImageButton
 		android:id="@+id/imageView_add"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_marginStart="@dimen/list_spacing_small"
 		android:background="?selectableItemBackgroundBorderless"
 		android:contentDescription="@string/add"
-		android:padding="@dimen/margin_small"
+		android:padding="@dimen/margin_normal"
 		android:scaleType="center"
 		android:src="@drawable/ic_add"
 		android:tooltipText="@string/add" />

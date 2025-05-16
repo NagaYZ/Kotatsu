@@ -8,14 +8,15 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
 import androidx.core.graphics.Insets
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import coil.ImageLoader
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.chip.Chip
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.combine
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.util.FadingAppbarMediator
@@ -31,16 +32,13 @@ import org.koitharu.kotatsu.databinding.ActivitySourcesCatalogBinding
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.parsers.model.ContentType
-import org.koitharu.kotatsu.search.ui.MangaListActivity
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	OnListItemClickListener<SourceCatalogItem.Source>,
-	AppBarOwner, MenuItem.OnActionExpandListener, ChipsView.OnChipClickListener {
-
-	@Inject
-	lateinit var coil: ImageLoader
+	AppBarOwner,
+	MenuItem.OnActionExpandListener,
+	ChipsView.OnChipClickListener {
 
 	override val appBar: AppBarLayout
 		get() = viewBinding.appbar
@@ -50,8 +48,8 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivitySourcesCatalogBinding.inflate(layoutInflater))
-		supportActionBar?.setDisplayHomeAsUpEnabled(true)
-		val sourcesAdapter = SourcesCatalogAdapter(this, coil, this)
+		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+		val sourcesAdapter = SourcesCatalogAdapter(this)
 		with(viewBinding.recyclerView) {
 			setHasFixedSize(true)
 			addItemDecoration(TypedListSpacingDecoration(context, false))
@@ -64,20 +62,27 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			this,
 			ReversibleActionObserver(viewBinding.recyclerView),
 		)
-		combine(viewModel.appliedFilter, viewModel.hasNewSources, ::Pair).observe(this) {
-			updateFilers(it.first, it.second)
+		combine(viewModel.appliedFilter, viewModel.hasNewSources, viewModel.contentTypes, ::Triple).observe(this) {
+			updateFilers(it.first, it.second, it.third)
 		}
 		addMenuProvider(SourcesCatalogMenuProvider(this, viewModel, this))
 	}
 
-	override fun onWindowInsetsChanged(insets: Insets) {
-		viewBinding.root.updatePadding(
-			left = insets.left,
-			right = insets.right,
-		)
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
 		viewBinding.recyclerView.updatePadding(
-			bottom = insets.bottom,
+			left = bars.left,
+			right = bars.right,
+			bottom = bars.bottom,
 		)
+		viewBinding.appbar.updatePadding(
+			left = bars.left,
+			right = bars.right,
+			top = bars.top,
+		)
+		return WindowInsetsCompat.Builder(insets)
+			.setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
+			.build()
 	}
 
 	override fun onChipClick(chip: Chip, data: Any?) {
@@ -89,7 +94,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	}
 
 	override fun onItemClick(item: SourceCatalogItem.Source, view: View) {
-		startActivity(MangaListActivity.newIntent(this, item.source))
+		router.openList(item.source, null, null)
 	}
 
 	override fun onItemLongClick(item: SourceCatalogItem.Source, view: View): Boolean {
@@ -111,8 +116,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	private fun updateFilers(
 		appliedFilter: SourcesCatalogFilter,
 		hasNewSources: Boolean,
+		contentTypes: List<ContentType>,
 	) {
-		val chips = ArrayList<ChipModel>(ContentType.entries.size + 2)
+		val chips = ArrayList<ChipModel>(contentTypes.size + 2)
 		chips += ChipModel(
 			title = appliedFilter.locale?.toLocale().getDisplayName(this),
 			icon = R.drawable.ic_language,
@@ -126,11 +132,8 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				data = true,
 			)
 		}
-		for (type in ContentType.entries) {
-			if (type == ContentType.HENTAI && viewModel.isNsfwDisabled) {
-				continue
-			}
-			chips += ChipModel(
+		contentTypes.mapTo(chips) { type ->
+			ChipModel(
 				title = getString(type.titleResId),
 				isChecked = type in appliedFilter.types,
 				data = type,

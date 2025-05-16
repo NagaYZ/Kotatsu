@@ -28,6 +28,7 @@
 		android:layout_height="wrap_content"
 		android:background="?selectableItemBackgroundBorderless"
 		android:contentDescription="@string/settings"
+		android:tooltipText="@string/settings"
 		android:padding="4dp"
 		app:layout_constraintEnd_toEndOf="parent"
 		app:layout_constraintTop_toTopOf="parent"
@@ -47,7 +48,7 @@
 
 	<com.google.android.material.textfield.TextInputLayout
 		android:id="@+id/layout_email"
-		style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+		style="?textInputOutlinedStyle"
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="30dp"
@@ -73,7 +74,7 @@
 
 	<Button
 		android:id="@+id/button_cancel"
-		style="@style/Widget.Material3.Button.OutlinedButton"
+		style="?materialButtonOutlinedStyle"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
 		android:text="@android:string/cancel"
@@ -82,7 +83,6 @@
 
 	<Button
 		android:id="@+id/button_next"
-		style="@style/Widget.Material3.Button.TonalButton"
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:enabled="false"
@@ -104,7 +104,7 @@
 
 	<com.google.android.material.textfield.TextInputLayout
 		android:id="@+id/layout_password"
-		style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+		style="?textInputOutlinedStyle"
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginTop="30dp"
@@ -131,7 +131,7 @@
 
 	<Button
 		android:id="@+id/button_back"
-		style="@style/Widget.Material3.Button.OutlinedButton"
+		style="?materialButtonOutlinedStyle"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
 		android:text="@string/back"
@@ -140,7 +140,6 @@
 
 	<Button
 		android:id="@+id/button_done"
-		style="@style/Widget.Material3.Button.TonalButton"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
 		android:enabled="false"
@@ -160,6 +159,50 @@
 		android:layout_height="wrap_content"
 		android:visibility="gone"
 		app:constraint_referenced_ids="textView_subtitle_2,button_back,button_done,layout_password" />
+
+	<androidx.constraintlayout.widget.Barrier
+		android:id="@+id/barrier_input"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		app:barrierDirection="bottom"
+		app:constraint_referenced_ids="layout_email,layout_password" />
+
+	<View
+		android:id="@+id/view_line"
+		android:layout_width="4dp"
+		android:layout_height="0dp"
+		android:background="@drawable/bg_chip"
+		android:backgroundTint="?colorError"
+		app:layout_constraintBottom_toBottomOf="@id/textView_hint_body"
+		app:layout_constraintStart_toStartOf="parent"
+		app:layout_constraintTop_toTopOf="@id/textView_hint_title" />
+
+	<TextView
+		android:id="@+id/textView_hint_title"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="12dp"
+		android:layout_marginTop="32dp"
+		android:drawablePadding="10dp"
+		android:gravity="center_vertical"
+		android:text="@string/unstable_feature"
+		android:textAppearance="?textAppearanceTitleMedium"
+		app:drawableStartCompat="@drawable/ic_alert_outline"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintStart_toEndOf="@id/view_line"
+		app:layout_constraintTop_toBottomOf="@id/barrier_input" />
+
+	<TextView
+		android:id="@+id/textView_hint_body"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:paddingBottom="6dp"
+		android:text="@string/unstable_feature_summary"
+		android:textAppearance="?textAppearanceBodyMedium"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintStart_toStartOf="@id/textView_hint_title"
+		app:layout_constraintTop_toBottomOf="@id/textView_hint_title" />
 
 	<FrameLayout
 		android:id="@+id/layout_progress"

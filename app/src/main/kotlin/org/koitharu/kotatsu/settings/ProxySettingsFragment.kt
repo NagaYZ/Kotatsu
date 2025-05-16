@@ -43,6 +43,7 @@ class ProxySettingsFragment : BasePreferenceFragment(R.string.proxy),
 
 	override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
 		addPreferencesFromResource(R.xml.pref_proxy)
+		@Suppress("UsePropertyAccessSyntax")
 		findPreference<EditTextPreference>(AppSettings.KEY_PROXY_ADDRESS)?.setOnBindEditTextListener(
 			EditTextBindListener(
 				inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_VARIATION_URI,
@@ -50,6 +51,7 @@ class ProxySettingsFragment : BasePreferenceFragment(R.string.proxy),
 				validator = DomainValidator(),
 			),
 		)
+		@Suppress("UsePropertyAccessSyntax")
 		findPreference<EditTextPreference>(AppSettings.KEY_PROXY_PORT)?.setOnBindEditTextListener(
 			EditTextBindListener(
 				inputType = EditorInfo.TYPE_CLASS_NUMBER,
@@ -58,6 +60,7 @@ class ProxySettingsFragment : BasePreferenceFragment(R.string.proxy),
 			),
 		)
 		findPreference<EditTextPreference>(AppSettings.KEY_PROXY_PASSWORD)?.let { pref ->
+			@Suppress("UsePropertyAccessSyntax")
 			pref.setOnBindEditTextListener(
 				EditTextBindListener(
 					inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_VARIATION_PASSWORD,
@@ -81,7 +84,7 @@ class ProxySettingsFragment : BasePreferenceFragment(R.string.proxy),
 	}
 
 	override fun onPreferenceTreeClick(preference: Preference): Boolean = when (preference.key) {
-		AppSettings.PROXY_TEST -> {
+		AppSettings.KEY_PROXY_TEST -> {
 			testConnection()
 			true
 		}
@@ -102,13 +105,13 @@ class ProxySettingsFragment : BasePreferenceFragment(R.string.proxy),
 		findPreference<PreferenceCategory>(AppSettings.KEY_PROXY_AUTH)?.isEnabled = isProxyEnabled
 		findPreference<Preference>(AppSettings.KEY_PROXY_LOGIN)?.isEnabled = isProxyEnabled
 		findPreference<Preference>(AppSettings.KEY_PROXY_PASSWORD)?.isEnabled = isProxyEnabled
-		findPreference<Preference>(AppSettings.PROXY_TEST)?.isEnabled = isProxyEnabled && testJob?.isActive != true
+		findPreference<Preference>(AppSettings.KEY_PROXY_TEST)?.isEnabled = isProxyEnabled && testJob?.isActive != true
 	}
 
 	private fun testConnection() {
 		testJob?.cancel()
 		testJob = viewLifecycleScope.launch {
-			val pref = findPreference<Preference>(AppSettings.PROXY_TEST)
+			val pref = findPreference<Preference>(AppSettings.KEY_PROXY_TEST)
 			pref?.run {
 				setSummary(R.string.loading_)
 				isEnabled = false
@@ -119,8 +122,9 @@ class ProxySettingsFragment : BasePreferenceFragment(R.string.proxy),
 						.get()
 						.url("http://neverssl.com")
 						.build()
-					val response = okHttpClient.newCall(request).await()
-					check(response.isSuccessful) { response.message }
+					okHttpClient.newCall(request).await().use { response ->
+						check(response.isSuccessful) { response.message }
+					}
 				}
 				showTestResult(null)
 			} catch (e: CancellationException) {

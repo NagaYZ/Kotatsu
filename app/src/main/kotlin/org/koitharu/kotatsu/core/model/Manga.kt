@@ -1,18 +1,27 @@
 package org.koitharu.kotatsu.core.model
 
+import android.content.res.Resources
 import android.net.Uri
+import android.text.SpannableStringBuilder
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.collection.MutableObjectIntMap
+import androidx.core.net.toUri
 import androidx.core.os.LocaleListCompat
+import androidx.core.text.buildSpannedString
+import androidx.core.text.strikeThrough
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.util.ext.iterator
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.parsers.model.ContentRating
+import org.koitharu.kotatsu.parsers.model.Demographic
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.parsers.model.MangaListFilter
 import org.koitharu.kotatsu.parsers.model.MangaState
-import org.koitharu.kotatsu.parsers.util.formatSimple
+import org.koitharu.kotatsu.parsers.util.findById
+import org.koitharu.kotatsu.parsers.util.ifNullOrEmpty
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import com.google.android.material.R as materialR
 
@@ -23,8 +32,6 @@ fun Collection<Manga>.distinctById() = distinctBy { it.id }
 
 @JvmName("chaptersIds")
 fun Collection<MangaChapter>.ids() = mapToSet { it.id }
-
-fun Collection<MangaChapter>.findById(id: Long) = find { x -> x.id == id }
 
 fun Collection<ChapterListItem>.countChaptersByBranch(): Int {
 	if (size <= 1) {
@@ -68,9 +75,16 @@ val ContentRating.titleResId: Int
 		ContentRating.ADULT -> R.string.rating_adult
 	}
 
-fun Manga.findChapter(id: Long): MangaChapter? {
-	return chapters?.findById(id)
-}
+@get:StringRes
+val Demographic.titleResId: Int
+	get() = when (this) {
+		Demographic.SHOUNEN -> R.string.demographic_shounen
+		Demographic.SHOUJO -> R.string.demographic_shoujo
+		Demographic.SEINEN -> R.string.demographic_seinen
+		Demographic.JOSEI -> R.string.demographic_josei
+		Demographic.KODOMO -> R.string.demographic_kodomo
+		Demographic.NONE -> R.string.none
+	}
 
 fun Manga.getPreferredBranch(history: MangaHistory?): String? {
 	val ch = chapters
@@ -110,18 +124,16 @@ fun Manga.getPreferredBranch(history: MangaHistory?): String? {
 val Manga.isLocal: Boolean
 	get() = source == LocalMangaSource
 
+val Manga.isBroken: Boolean
+	get() = source == UnknownMangaSource
+
 val Manga.appUrl: Uri
-	get() = Uri.parse("https://kotatsu.app/manga").buildUpon()
+	get() = "https://kotatsu.app/manga".toUri()
+		.buildUpon()
 		.appendQueryParameter("source", source.name)
 		.appendQueryParameter("name", title)
 		.appendQueryParameter("url", url)
 		.build()
-
-fun MangaChapter.formatNumber(): String? = if (number > 0f) {
-	number.formatSimple()
-} else {
-	null
-}
 
 fun Manga.chaptersCount(): Int {
 	if (chapters.isNullOrEmpty()) {
@@ -137,4 +149,61 @@ fun Manga.chaptersCount(): Int {
 		}
 	}
 	return max
+}
+
+fun Manga.isNsfw(): Boolean = contentRating == ContentRating.ADULT || source.isNsfw()
+
+fun MangaListFilter.getSummary() = buildSpannedString {
+	if (!query.isNullOrEmpty()) {
+		append(query)
+		if (tags.isNotEmpty() || tagsExclude.isNotEmpty()) {
+			append(' ')
+			append('(')
+			appendTagsSummary(this@getSummary)
+			append(')')
+		}
+	} else {
+		appendTagsSummary(this@getSummary)
+	}
+}
+
+private fun SpannableStringBuilder.appendTagsSummary(filter: MangaListFilter) {
+	filter.tags.joinTo(this) { it.title }
+	if (filter.tagsExclude.isNotEmpty()) {
+		strikeThrough {
+			filter.tagsExclude.joinTo(this) { it.title }
+		}
+	}
+}
+
+fun MangaChapter.getLocalizedTitle(resources: Resources, index: Int = -1): String {
+	title?.let {
+		if (it.isNotBlank()) {
+			return it
+		}
+	}
+	val num = numberString()
+	val vol = volumeString()
+	return when {
+		num != null && vol != null -> resources.getString(R.string.chapter_volume_number, vol, num)
+		num != null -> resources.getString(R.string.chapter_number, num)
+		index > 0 -> resources.getString(
+			R.string.chapters_time_pattern,
+			resources.getString(R.string.unnamed_chapter),
+			index.toString(),
+		)
+
+		else -> resources.getString(R.string.unnamed_chapter)
+	}
+}
+
+fun Manga.withOverride(override: MangaOverride?) = if (override != null) {
+	copy(
+		title = override.title.ifNullOrEmpty { title },
+		coverUrl = override.coverUrl.ifNullOrEmpty { coverUrl },
+		largeCoverUrl = override.coverUrl.ifNullOrEmpty { largeCoverUrl },
+		contentRating = override.contentRating ?: contentRating,
+	)
+} else {
+	this
 }

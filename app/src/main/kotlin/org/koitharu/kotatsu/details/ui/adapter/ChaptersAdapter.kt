@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.details.ui.adapter
 
 import android.content.Context
-import org.koitharu.kotatsu.core.model.formatNumber
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.list.fastscroll.FastScroller
@@ -12,7 +11,7 @@ import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 
 class ChaptersAdapter(
-	private val onItemClickListener: OnListItemClickListener<ChapterListItem>,
+	onItemClickListener: OnListItemClickListener<ChapterListItem>,
 ) : BaseListAdapter<ListModel>(), FastScroller.SectionIndexer {
 
 	private var hasVolumes = false
@@ -33,7 +32,7 @@ class ChaptersAdapter(
 			findHeader(position)?.getText(context)
 		} else {
 			val chapter = (items.getOrNull(position) as? ChapterListItem)?.chapter ?: return null
-			if (chapter.number > 0) chapter.formatNumber() else null
+			chapter.numberString()
 		}
 	}
 }

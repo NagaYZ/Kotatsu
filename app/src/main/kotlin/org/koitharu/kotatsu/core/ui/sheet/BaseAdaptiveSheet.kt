@@ -14,6 +14,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDialog
 import androidx.appcompat.app.AppCompatDialogFragment
 import androidx.appcompat.view.ActionMode
+import androidx.core.view.OnApplyWindowInsetsListener
+import androidx.core.view.ViewCompat
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -21,15 +23,23 @@ import androidx.viewbinding.ViewBinding
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.sidesheet.SideSheetDialog
+import dagger.hilt.android.EntryPointAccessors
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.BaseActivityEntryPoint
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
 import com.google.android.material.R as materialR
 
-abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
+abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment(),
+	OnApplyWindowInsetsListener,
+	ExceptionResolver.Host {
 
 	private var waitingForDismissAllowingStateLoss = false
 	private var isFitToContentsDisabled = false
+
+	protected lateinit var exceptionResolver: ExceptionResolver
+		private set
 
 	var viewBinding: B? = null
 		private set
@@ -50,6 +60,12 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 		private set
 	private var lockCounter = 0
 
+	override fun onAttach(context: Context) {
+		super.onAttach(context)
+		val entryPoint = EntryPointAccessors.fromApplication<BaseActivityEntryPoint>(context)
+		exceptionResolver = entryPoint.exceptionResolverFactory.create(this)
+	}
+
 	final override fun onCreateView(
 		inflater: LayoutInflater,
 		container: ViewGroup?,
@@ -62,6 +78,7 @@ abstract class BaseAdaptiveSheet<B : ViewBinding> : AppCompatDialogFragment() {
 
 	final override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		ViewCompat.setOnApplyWindowInsetsListener(view, this)
 		val binding = requireViewBinding()
 		if (actionModeDelegate == null) {
 			actionModeDelegate = (activity as? BaseActivity<*>)?.actionModeDelegate

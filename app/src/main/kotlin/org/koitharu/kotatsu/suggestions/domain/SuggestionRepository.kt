@@ -6,13 +6,15 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.entity.toManga
-import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.db.entity.toMangaTagsList
+import org.koitharu.kotatsu.core.model.toMangaSources
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.suggestions.data.SuggestionEntity
+import org.koitharu.kotatsu.suggestions.data.SuggestionWithManga
 import javax.inject.Inject
 
 class SuggestionRepository @Inject constructor(
@@ -21,25 +23,19 @@ class SuggestionRepository @Inject constructor(
 
 	fun observeAll(): Flow<List<Manga>> {
 		return db.getSuggestionDao().observeAll().mapItems {
-			it.manga.toManga(it.tags.toMangaTags())
+			it.toManga()
 		}
 	}
 
 	fun observeAll(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<Manga>> {
 		return db.getSuggestionDao().observeAll(limit, filterOptions).mapItems {
-			it.manga.toManga(it.tags.toMangaTags())
-		}
-	}
-
-	suspend fun getRandom(): Manga? {
-		return db.getSuggestionDao().getRandom()?.let {
-			it.manga.toManga(it.tags.toMangaTags())
+			it.toManga()
 		}
 	}
 
 	suspend fun getRandomList(limit: Int): List<Manga> {
 		return db.getSuggestionDao().getRandom(limit).map {
-			it.manga.toManga(it.tags.toMangaTags())
+			it.toManga()
 		}
 	}
 
@@ -54,6 +50,11 @@ class SuggestionRepository @Inject constructor(
 	suspend fun getTopTags(limit: Int): List<MangaTag> {
 		return db.getSuggestionDao().getTopTags(limit)
 			.toMangaTagsList()
+	}
+
+	suspend fun getTopSources(limit: Int): List<MangaSource> {
+		return db.getSuggestionDao().getTopSources(limit)
+			.toMangaSources()
 	}
 
 	suspend fun replace(suggestions: Iterable<MangaSuggestion>) {
@@ -73,4 +74,6 @@ class SuggestionRepository @Inject constructor(
 			}
 		}
 	}
+
+	private fun SuggestionWithManga.toManga() = manga.toManga(emptySet(), null)
 }

@@ -10,12 +10,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
-import org.koitharu.kotatsu.core.parser.MangaIntent
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -23,9 +23,11 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.core.util.ext.requireValue
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.list.domain.ReadingProgress
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingFooter
 import org.koitharu.kotatsu.list.ui.model.LoadingState
+import org.koitharu.kotatsu.parsers.util.ifZero
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
@@ -40,7 +42,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 	private val historyRepository: HistoryRepository,
 ) : BaseViewModel() {
 
-	val manga = savedStateHandle.require<ParcelableManga>(MangaIntent.KEY_MANGA).manga
+	val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
 
 	val availableScrobblers = scrobblers.filter { it.isEnabled }
 
@@ -57,7 +59,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 		get() = availableScrobblers[selectedScrobblerIndex.requireValue()]
 
 	val content: StateFlow<List<ListModel>> = combine(
-		scrobblerMangaList.map { it.distinctBy { x -> x.id } },
+		scrobblerMangaList,
 		listError,
 		hasNextPage,
 	) { list, error, isHasNextPage ->
@@ -79,8 +81,8 @@ class ScrobblingSelectorViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	val selectedItemId = MutableStateFlow(NO_ID)
-	val searchQuery = MutableStateFlow(manga.title)
 	val onClose = MutableEventFlow<Unit>()
+	private val searchQuery = MutableStateFlow(manga.title)
 
 	val isEmpty: Boolean
 		get() = scrobblerMangaList.value.isEmpty()
@@ -125,14 +127,17 @@ class ScrobblingSelectorViewModel @Inject constructor(
 			runCatchingCancellable {
 				currentScrobbler.findManga(checkNotNull(searchQuery.value), offset)
 			}.onSuccess { list ->
-				if (!append) {
-					scrobblerMangaList.value = list
-				} else if (list.isNotEmpty()) {
-					scrobblerMangaList.value += list
-				}
-				hasNextPage.value = list.isNotEmpty()
+				val newList = (if (append) {
+					scrobblerMangaList.value + list
+				} else {
+					list
+				}).distinctBy { x -> x.id }
+				val changed = newList != scrobblerMangaList.value
+				scrobblerMangaList.value = newList
+				hasNextPage.value = changed && newList.isNotEmpty()
 			}.onFailure { error ->
 				error.printStackTraceDebug()
+				hasNextPage.value = false
 				listError.value = error
 			}
 		}
@@ -155,7 +160,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				rating = prevInfo?.rating ?: 0f,
 				status = prevInfo?.status ?: when {
 					history == null -> ScrobblingStatus.PLANNED
-					history.percent == 1f -> ScrobblingStatus.COMPLETED
+					ReadingProgress.isCompleted(history.percent) -> ScrobblingStatus.COMPLETED
 					else -> ScrobblingStatus.READING
 				},
 				comment = prevInfo?.comment,
@@ -201,11 +206,14 @@ class ScrobblingSelectorViewModel @Inject constructor(
 		actionStringRes = R.string.search,
 	)
 
-	private fun errorHint(e: Throwable) = ScrobblerHint(
-		icon = R.drawable.ic_error_large,
-		textPrimary = R.string.error_occurred,
-		error = e,
-		textSecondary = 0,
-		actionStringRes = R.string.try_again,
-	)
+	private fun errorHint(e: Throwable): ScrobblerHint {
+		val resolveAction = ExceptionResolver.getResolveStringId(e)
+		return ScrobblerHint(
+			icon = R.drawable.ic_error_large,
+			textPrimary = R.string.error_occurred,
+			error = e,
+			textSecondary = if (resolveAction == 0) 0 else R.string.try_again,
+			actionStringRes = resolveAction.ifZero { R.string.try_again },
+		)
+	}
 }

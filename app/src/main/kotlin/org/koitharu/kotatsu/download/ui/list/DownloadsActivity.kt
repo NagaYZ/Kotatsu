@@ -2,15 +2,18 @@ package org.koitharu.kotatsu.download.ui.list
 
 import android.os.Bundle
 import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.Insets
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import coil.ImageLoader
+import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.RecyclerScrollKeeper
@@ -19,7 +22,6 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.ActivityDownloadsBinding
-import org.koitharu.kotatsu.details.ui.DetailsActivity
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import javax.inject.Inject
@@ -27,7 +29,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	DownloadItemListener,
-	ListSelectionController.Callback2 {
+	ListSelectionController.Callback {
 
 	@Inject
 	lateinit var coil: ImageLoader
@@ -41,8 +43,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityDownloadsBinding.inflate(layoutInflater))
-		supportActionBar?.setDisplayHomeAsUpEnabled(true)
-		val downloadsAdapter = DownloadsAdapter(this, coil, this)
+		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+		val downloadsAdapter = DownloadsAdapter(this, this)
 		val decoration = TypedListSpacingDecoration(this, false)
 		selectionController = ListSelectionController(
 			appCompatDelegate = delegate,
@@ -58,9 +60,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			RecyclerScrollKeeper(this).attach()
 		}
 		addMenuProvider(DownloadsMenuProvider(this, viewModel))
-		viewModel.items.observe(this) {
-			downloadsAdapter.items = it
-		}
+		viewModel.items.observe(this, downloadsAdapter)
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
 		val menuInvalidator = MenuInvalidator(this)
 		viewModel.hasActiveWorks.observe(this, menuInvalidator)
@@ -68,28 +68,36 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		viewModel.hasCancellableWorks.observe(this, menuInvalidator)
 	}
 
-	override fun onWindowInsetsChanged(insets: Insets) {
-		val rv = viewBinding.recyclerView
-		rv.updatePadding(
-			left = insets.left + rv.paddingTop,
-			right = insets.right + rv.paddingTop,
-			bottom = insets.bottom,
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+		viewBinding.recyclerView.updatePadding(
+			left = bars.left,
+			right = bars.right,
+			bottom = bars.bottom,
 		)
-		viewBinding.toolbar.updatePadding(
-			left = insets.left,
-			right = insets.right,
+		viewBinding.appbar.updatePadding(
+			left = bars.left,
+			right = bars.right,
+			top = bars.top,
 		)
+		return WindowInsetsCompat.Builder(insets)
+			.setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
+			.build()
 	}
 
 	override fun onItemClick(item: DownloadItemModel, view: View) {
 		if (selectionController.onItemClick(item.id.mostSignificantBits)) {
 			return
 		}
-		startActivity(DetailsActivity.newIntent(view.context, item.manga ?: return))
+		router.openDetails(item.manga ?: return)
 	}
 
 	override fun onItemLongClick(item: DownloadItemModel, view: View): Boolean {
-		return selectionController.onItemLongClick(item.id.mostSignificantBits)
+		return selectionController.onItemLongClick(view, item.id.mostSignificantBits)
+	}
+
+	override fun onItemContextClick(item: DownloadItemModel, view: View): Boolean {
+		return selectionController.onItemContextClick(view, item.id.mostSignificantBits)
 	}
 
 	override fun onExpandClick(item: DownloadItemModel) {
@@ -122,34 +130,38 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		viewBinding.recyclerView.invalidateItemDecorations()
 	}
 
-	override fun onCreateActionMode(controller: ListSelectionController, mode: ActionMode, menu: Menu): Boolean {
-		mode.menuInflater.inflate(R.menu.mode_downloads, menu)
+	override fun onCreateActionMode(
+		controller: ListSelectionController,
+		menuInflater: MenuInflater,
+		menu: Menu
+	): Boolean {
+		menuInflater.inflate(R.menu.mode_downloads, menu)
 		return true
 	}
 
-	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode, item: MenuItem): Boolean {
+	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
 		return when (item.itemId) {
 			R.id.action_resume -> {
 				viewModel.resume(controller.snapshot())
-				mode.finish()
+				mode?.finish()
 				true
 			}
 
 			R.id.action_pause -> {
 				viewModel.pause(controller.snapshot())
-				mode.finish()
+				mode?.finish()
 				true
 			}
 
 			R.id.action_cancel -> {
 				viewModel.cancel(controller.snapshot())
-				mode.finish()
+				mode?.finish()
 				true
 			}
 
 			R.id.action_remove -> {
 				viewModel.remove(controller.snapshot())
-				mode.finish()
+				mode?.finish()
 				true
 			}
 
@@ -162,7 +174,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		}
 	}
 
-	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode, menu: Menu): Boolean {
+	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
 		val snapshot = viewModel.snapshot(controller.peekCheckedIds())
 		var canPause = true
 		var canResume = true

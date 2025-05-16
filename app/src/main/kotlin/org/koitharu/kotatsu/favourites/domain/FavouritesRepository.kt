@@ -10,23 +10,28 @@ import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
+import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.model.FavouriteCategory
+import org.koitharu.kotatsu.core.model.toMangaSources
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.toFavouriteCategory
-import org.koitharu.kotatsu.favourites.data.toManga
 import org.koitharu.kotatsu.favourites.data.toMangaList
 import org.koitharu.kotatsu.favourites.domain.model.Cover
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.util.levenshteinDistance
+import org.koitharu.kotatsu.search.domain.SearchKind
 import javax.inject.Inject
 
 @Reusable
 class FavouritesRepository @Inject constructor(
 	private val db: MangaDatabase,
+	private val localObserver: LocalFavoritesObserver,
 ) {
 
 	suspend fun getAllManga(): List<Manga> {
@@ -39,9 +44,25 @@ class FavouritesRepository @Inject constructor(
 		return entities.toMangaList()
 	}
 
+	suspend fun search(query: String, kind: SearchKind, limit: Int): List<Manga> {
+		val dao = db.getFavouritesDao()
+		val q = "%$query%"
+		val entities = when (kind) {
+			SearchKind.SIMPLE,
+			SearchKind.TITLE -> dao.searchByTitle(q, limit).sortedBy { it.manga.title.levenshteinDistance(query) }
+
+			SearchKind.AUTHOR -> dao.searchByAuthor(q, limit)
+			SearchKind.TAG -> dao.searchByTag(q, limit)
+		}
+		return entities.toMangaList()
+	}
+
 	fun observeAll(order: ListSortOrder, filterOptions: Set<ListFilterOption>, limit: Int): Flow<List<Manga>> {
+		if (ListFilterOption.Downloaded in filterOptions) {
+			return localObserver.observeAll(order, filterOptions, limit)
+		}
 		return db.getFavouritesDao().observeAll(order, filterOptions, limit)
-			.mapItems { it.toManga() }
+			.map { it.toMangaList() }
 	}
 
 	suspend fun getManga(categoryId: Long): List<Manga> {
@@ -55,8 +76,11 @@ class FavouritesRepository @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		limit: Int
 	): Flow<List<Manga>> {
+		if (ListFilterOption.Downloaded in filterOptions) {
+			return localObserver.observeAll(categoryId, order, filterOptions, limit)
+		}
 		return db.getFavouritesDao().observeAll(categoryId, order, filterOptions, limit)
-			.mapItems { it.toManga() }
+			.map { it.toMangaList() }
 	}
 
 	fun observeAll(categoryId: Long, filterOptions: Set<ListFilterOption>, limit: Int): Flow<List<Manga>> {
@@ -129,6 +153,16 @@ class FavouritesRepository @Inject constructor(
 		return db.getFavouritesDao().findCategoriesIds(mangaId).toSet()
 	}
 
+	suspend fun findPopularSources(categoryId: Long, limit: Int): List<MangaSource> {
+		return db.getFavouritesDao().run {
+			if (categoryId == 0L) {
+				findPopularSources(limit)
+			} else {
+				findPopularSources(categoryId, limit)
+			}
+		}.toMangaSources()
+	}
+
 	suspend fun createCategory(
 		title: String,
 		sortOrder: ListSortOrder,
@@ -174,6 +208,7 @@ class FavouritesRepository @Inject constructor(
 				db.getFavouritesDao().deleteAll(id)
 				db.getFavouriteCategoriesDao().delete(id)
 			}
+			db.getChaptersDao().gc()
 		}
 	}
 
@@ -202,6 +237,7 @@ class FavouritesRepository @Inject constructor(
 					createdAt = System.currentTimeMillis(),
 					sortKey = 0,
 					deletedAt = 0L,
+					isPinned = false,
 				)
 				db.getFavouritesDao().insert(entity)
 			}
@@ -213,6 +249,7 @@ class FavouritesRepository @Inject constructor(
 			for (id in ids) {
 				db.getFavouritesDao().delete(mangaId = id)
 			}
+			db.getChaptersDao().gc()
 		}
 		return ReversibleHandle { recoverToFavourites(ids) }
 	}
@@ -222,6 +259,7 @@ class FavouritesRepository @Inject constructor(
 			for (id in ids) {
 				db.getFavouritesDao().delete(categoryId = categoryId, mangaId = id)
 			}
+			db.getChaptersDao().gc()
 		}
 		return ReversibleHandle { recoverToCategory(categoryId, ids) }
 	}

@@ -7,37 +7,36 @@ import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
+import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.view.ActionMode
-import androidx.core.graphics.Insets
-import androidx.core.view.updatePadding
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import coil.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksActivity
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.parser.external.ExternalMangaSource
 import org.koitharu.kotatsu.core.ui.BaseFragment
-import org.koitharu.kotatsu.core.ui.dialog.TwoButtonsAlertDialog
+import org.koitharu.kotatsu.core.ui.dialog.BigButtonsAlertDialog
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.ui.util.SpanSizeResolver
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
+import org.koitharu.kotatsu.core.util.ext.consumeAllSystemBarsInsets
 import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.core.util.ext.systemBarsInsets
 import org.koitharu.kotatsu.databinding.FragmentExploreBinding
-import org.koitharu.kotatsu.details.ui.DetailsActivity
-import org.koitharu.kotatsu.download.ui.list.DownloadsActivity
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreAdapter
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreListEventListener
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
@@ -45,28 +44,20 @@ import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.search.ui.MangaListActivity
-import org.koitharu.kotatsu.settings.SettingsActivity
-import org.koitharu.kotatsu.settings.sources.catalog.SourcesCatalogActivity
-import org.koitharu.kotatsu.suggestions.ui.SuggestionsActivity
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class ExploreFragment :
 	BaseFragment<FragmentExploreBinding>(),
 	RecyclerViewOwner,
 	ExploreListEventListener,
-	OnListItemClickListener<MangaSourceItem>, ListSelectionController.Callback2 {
-
-	@Inject
-	lateinit var coil: ImageLoader
+	OnListItemClickListener<MangaSourceItem>, ListSelectionController.Callback {
 
 	private val viewModel by viewModels<ExploreViewModel>()
 	private var exploreAdapter: ExploreAdapter? = null
 	private var sourceSelectionController: ListSelectionController? = null
 
-	override val recyclerView: RecyclerView
-		get() = requireViewBinding().recyclerView
+	override val recyclerView: RecyclerView?
+		get() = viewBinding?.recyclerView
 
 	override fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): FragmentExploreBinding {
 		return FragmentExploreBinding.inflate(inflater, container, false)
@@ -74,8 +65,8 @@ class ExploreFragment :
 
 	override fun onViewBindingCreated(binding: FragmentExploreBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		exploreAdapter = ExploreAdapter(coil, viewLifecycleOwner, this, this) { manga, view ->
-			startActivity(DetailsActivity.newIntent(view.context, manga))
+		exploreAdapter = ExploreAdapter(this, this) { manga, view ->
+			router.openDetails(manga)
 		}
 		sourceSelectionController = ListSelectionController(
 			appCompatDelegate = checkNotNull(findAppCompatDelegate()),
@@ -90,10 +81,8 @@ class ExploreFragment :
 			addItemDecoration(TypedListSpacingDecoration(context, false))
 			checkNotNull(sourceSelectionController).attachToRecyclerView(this)
 		}
-		addMenuProvider(ExploreMenuProvider(binding.root.context))
-		viewModel.content.observe(viewLifecycleOwner) {
-			exploreAdapter?.items = it
-		}
+		addMenuProvider(ExploreMenuProvider(router))
+		viewModel.content.observe(viewLifecycleOwner, checkNotNull(exploreAdapter))
 		viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.recyclerView, this))
 		viewModel.onOpenManga.observeEvent(viewLifecycleOwner, ::onOpenManga)
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.recyclerView))
@@ -103,83 +92,90 @@ class ExploreFragment :
 		}
 	}
 
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val barsInsets = insets.systemBarsInsets
+		val basePadding = v.resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
+		viewBinding?.recyclerView?.setPadding(
+			/* left = */ barsInsets.left + basePadding,
+			/* top = */ basePadding,
+			/* right = */ barsInsets.right + basePadding,
+			/* bottom = */ barsInsets.bottom + basePadding,
+		)
+		return insets.consumeAllSystemBarsInsets()
+	}
+
 	override fun onDestroyView() {
 		super.onDestroyView()
 		sourceSelectionController = null
 		exploreAdapter = null
 	}
 
-	override fun onWindowInsetsChanged(insets: Insets) {
-		val rv = requireViewBinding().recyclerView
-		rv.updatePadding(
-			bottom = insets.bottom + rv.paddingTop,
-		)
-	}
-
 	override fun onListHeaderClick(item: ListHeader, view: View) {
 		if (item.payload == R.id.nav_suggestions) {
-			startActivity(SuggestionsActivity.newIntent(view.context))
+			router.openSuggestions()
+		} else if (viewModel.isAllSourcesEnabled.value) {
+			router.openManageSources()
 		} else {
-			startActivity(Intent(view.context, SourcesCatalogActivity::class.java))
+			router.openSourcesCatalog()
 		}
 	}
 
 	override fun onClick(v: View) {
-		val intent = when (v.id) {
-			R.id.button_local -> MangaListActivity.newIntent(v.context, LocalMangaSource)
-			R.id.button_bookmarks -> AllBookmarksActivity.newIntent(v.context)
-			R.id.button_more -> SuggestionsActivity.newIntent(v.context)
-			R.id.button_downloads -> Intent(v.context, DownloadsActivity::class.java)
-			R.id.button_random -> {
-				viewModel.openRandom()
-				return
-			}
-
-			else -> return
+		when (v.id) {
+			R.id.button_local -> router.openList(LocalMangaSource, null, null)
+			R.id.button_bookmarks -> router.openBookmarks()
+			R.id.button_more -> router.openSuggestions()
+			R.id.button_downloads -> router.openDownloads()
+			R.id.button_random -> viewModel.openRandom()
 		}
-		startActivity(intent)
 	}
 
 	override fun onItemClick(item: MangaSourceItem, view: View) {
 		if (sourceSelectionController?.onItemClick(item.id) == true) {
 			return
 		}
-		val intent = MangaListActivity.newIntent(view.context, item.source)
-		startActivity(intent)
+		router.openList(item.source, null, null)
 	}
 
 	override fun onItemLongClick(item: MangaSourceItem, view: View): Boolean {
-		return sourceSelectionController?.onItemLongClick(item.id) ?: false
+		return sourceSelectionController?.onItemLongClick(view, item.id) == true
+	}
+
+	override fun onItemContextClick(item: MangaSourceItem, view: View): Boolean {
+		return sourceSelectionController?.onItemContextClick(view, item.id) == true
 	}
 
 	override fun onRetryClick(error: Throwable) = Unit
 
-	override fun onEmptyActionClick() {
-		startActivity(Intent(context ?: return, SourcesCatalogActivity::class.java))
-	}
+	override fun onEmptyActionClick() = router.openSourcesCatalog()
 
 	override fun onSelectionChanged(controller: ListSelectionController, count: Int) {
 		viewBinding?.recyclerView?.invalidateItemDecorations()
 	}
 
-	override fun onCreateActionMode(controller: ListSelectionController, mode: ActionMode, menu: Menu): Boolean {
-		mode.menuInflater.inflate(R.menu.mode_source, menu)
+	override fun onCreateActionMode(
+		controller: ListSelectionController,
+		menuInflater: MenuInflater,
+		menu: Menu
+	): Boolean {
+		menuInflater.inflate(R.menu.mode_source, menu)
 		return true
 	}
 
-	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode, menu: Menu): Boolean {
+	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
 		val selectedSources = viewModel.sourcesSnapshot(controller.peekCheckedIds())
 		val isSingleSelection = selectedSources.size == 1
 		menu.findItem(R.id.action_settings).isVisible = isSingleSelection
 		menu.findItem(R.id.action_shortcut).isVisible = isSingleSelection
 		menu.findItem(R.id.action_pin).isVisible = selectedSources.all { !it.isPinned }
 		menu.findItem(R.id.action_unpin).isVisible = selectedSources.all { it.isPinned }
-		menu.findItem(R.id.action_disable)?.isVisible = selectedSources.all { it.mangaSource is MangaParserSource }
+		menu.findItem(R.id.action_disable)?.isVisible = !viewModel.isAllSourcesEnabled.value &&
+			selectedSources.all { it.mangaSource is MangaParserSource }
 		menu.findItem(R.id.action_delete)?.isVisible = selectedSources.all { it.mangaSource is ExternalMangaSource }
 		return super.onPrepareActionMode(controller, mode, menu)
 	}
 
-	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode, item: MenuItem): Boolean {
+	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
 		val selectedSources = viewModel.sourcesSnapshot(controller.peekCheckedIds())
 		if (selectedSources.isEmpty()) {
 			return false
@@ -187,36 +183,36 @@ class ExploreFragment :
 		when (item.itemId) {
 			R.id.action_settings -> {
 				val source = selectedSources.singleOrNull() ?: return false
-				startActivity(SettingsActivity.newSourceSettingsIntent(requireContext(), source))
-				mode.finish()
+				router.openSourceSettings(source)
+				mode?.finish()
 			}
 
 			R.id.action_disable -> {
 				viewModel.disableSources(selectedSources)
-				mode.finish()
+				mode?.finish()
 			}
 
 			R.id.action_delete -> {
 				selectedSources.forEach {
 					(it.mangaSource as? ExternalMangaSource)?.let { uninstallExternalSource(it) }
 				}
-				mode.finish()
+				mode?.finish()
 			}
 
 			R.id.action_shortcut -> {
 				val source = selectedSources.singleOrNull() ?: return false
 				viewModel.requestPinShortcut(source)
-				mode.finish()
+				mode?.finish()
 			}
 
 			R.id.action_pin -> {
 				viewModel.setSourcesPinned(selectedSources, isPinned = true)
-				mode.finish()
+				mode?.finish()
 			}
 
 			R.id.action_unpin -> {
 				viewModel.setSourcesPinned(selectedSources, isPinned = false)
-				mode.finish()
+				mode?.finish()
 			}
 
 			else -> return false
@@ -225,8 +221,7 @@ class ExploreFragment :
 	}
 
 	private fun onOpenManga(manga: Manga) {
-		val intent = DetailsActivity.newIntent(context ?: return, manga)
-		startActivity(intent)
+		router.openDetails(manga)
 	}
 
 	private fun onGridModeChanged(isGrid: Boolean) {
@@ -243,7 +238,7 @@ class ExploreFragment :
 		val listener = DialogInterface.OnClickListener { _, which ->
 			viewModel.respondSuggestionTip(which == DialogInterface.BUTTON_POSITIVE)
 		}
-		TwoButtonsAlertDialog.Builder(requireContext())
+		BigButtonsAlertDialog.Builder(requireContext())
 			.setIcon(R.drawable.ic_suggestion)
 			.setTitle(R.string.suggestions_enable_prompt)
 			.setPositiveButton(R.string.enable, listener)

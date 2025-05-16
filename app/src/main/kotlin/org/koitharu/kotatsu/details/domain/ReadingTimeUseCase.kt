@@ -1,10 +1,10 @@
 package org.koitharu.kotatsu.details.domain
 
 import org.koitharu.kotatsu.core.model.MangaHistory
-import org.koitharu.kotatsu.core.model.findById
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.data.ReadingTime
+import org.koitharu.kotatsu.parsers.util.findById
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -15,7 +15,7 @@ class ReadingTimeUseCase @Inject constructor(
 	private val statsRepository: StatsRepository,
 ) {
 
-	suspend fun invoke(manga: MangaDetails?, branch: String?, history: MangaHistory?): ReadingTime? {
+	suspend operator fun invoke(manga: MangaDetails?, branch: String?, history: MangaHistory?): ReadingTime? {
 		if (!settings.isReadingTimeEstimationEnabled) {
 			return null
 		}

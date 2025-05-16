@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen
 	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto">
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:title="@string/suggestions">
 
 	<SwitchPreferenceCompat
 		android:defaultValue="false"
@@ -15,6 +16,13 @@
 		android:key="suggestions_wifi"
 		android:summary="@string/suggestions_wifi_only_summary"
 		android:title="@string/only_using_wifi" />
+
+	<SwitchPreferenceCompat
+		android:defaultValue="false"
+		android:dependency="suggestions"
+		android:key="suggestions_disabled_sources"
+		android:summary="@string/suggestions_disabled_sources_summary"
+		android:title="@string/include_disabled_sources" />
 
 	<SwitchPreferenceCompat
 		android:defaultValue="false"
@@ -34,6 +42,7 @@
 		android:defaultValue="false"
 		android:dependency="suggestions"
 		android:key="suggestions_exclude_nsfw"
+		android:summary="@string/exclude_nsfw_from_suggestions_summary"
 		android:title="@string/exclude_nsfw_from_suggestions" />
 
 	<Preference

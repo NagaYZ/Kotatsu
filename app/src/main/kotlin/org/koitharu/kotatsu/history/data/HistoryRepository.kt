@@ -10,12 +10,13 @@ import kotlinx.coroutines.flow.onStart
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.entity.toManga
-import org.koitharu.kotatsu.core.db.entity.toMangaTag
+import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
+import org.koitharu.kotatsu.core.db.entity.toMangaTagsList
 import org.koitharu.kotatsu.core.model.MangaHistory
-import org.koitharu.kotatsu.core.model.findById
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.toMangaSources
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
@@ -26,9 +27,13 @@ import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
+import org.koitharu.kotatsu.parsers.util.findById
+import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.tryScrobble
+import org.koitharu.kotatsu.search.domain.SearchKind
 import org.koitharu.kotatsu.tracker.domain.CheckNewChaptersUseCase
 import javax.inject.Inject
 import javax.inject.Provider
@@ -39,39 +44,49 @@ class HistoryRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 	private val mangaRepository: MangaDataRepository,
+	private val localObserver: HistoryLocalObserver,
 	private val newChaptersUseCaseProvider: Provider<CheckNewChaptersUseCase>,
 ) {
 
 	suspend fun getList(offset: Int, limit: Int): List<Manga> {
 		val entities = db.getHistoryDao().findAll(offset, limit)
-		return entities.map { it.manga.toManga(it.tags.toMangaTags()) }
+		return entities.map { it.toManga() }
 	}
 
-	suspend fun getCount(): Int {
-		return db.getHistoryDao().getCount()
+	suspend fun search(query: String, kind: SearchKind, limit: Int): List<Manga> {
+		val dao = db.getHistoryDao()
+		val q = "%$query%"
+		val entities = when (kind) {
+			SearchKind.SIMPLE,
+			SearchKind.TITLE -> dao.searchByTitle(q, limit).sortedBy { it.manga.title.levenshteinDistance(query) }
+
+			SearchKind.AUTHOR -> dao.searchByAuthor(q, limit)
+			SearchKind.TAG -> dao.searchByTag(q, limit)
+		}
+		return entities.toMangaList()
 	}
 
 	suspend fun getLastOrNull(): Manga? {
 		val entity = db.getHistoryDao().findAll(0, 1).firstOrNull() ?: return null
-		return entity.manga.toManga(entity.tags.toMangaTags())
+		return entity.toManga()
 	}
 
 	fun observeLast(): Flow<Manga?> {
 		return db.getHistoryDao().observeAll(1).map {
 			val first = it.firstOrNull()
-			first?.manga?.toManga(first.tags.toMangaTags())
+			first?.toManga()
 		}
 	}
 
 	fun observeAll(): Flow<List<Manga>> {
 		return db.getHistoryDao().observeAll().mapItems {
-			it.manga.toManga(it.tags.toMangaTags())
+			it.toManga()
 		}
 	}
 
 	fun observeAll(limit: Int): Flow<List<Manga>> {
 		return db.getHistoryDao().observeAll(limit).mapItems {
-			it.manga.toManga(it.tags.toMangaTags())
+			it.toManga()
 		}
 	}
 
@@ -80,9 +95,12 @@ class HistoryRepository @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		limit: Int
 	): Flow<List<MangaWithHistory>> {
+		if (ListFilterOption.Downloaded in filterOptions) {
+			return localObserver.observeAll(order, filterOptions, limit)
+		}
 		return db.getHistoryDao().observeAll(order, filterOptions, limit).mapItems {
 			MangaWithHistory(
-				it.manga.toManga(it.tags.toMangaTags()),
+				it.toManga(),
 				it.history.toMangaHistory(),
 			)
 		}
@@ -92,12 +110,6 @@ class HistoryRepository @Inject constructor(
 		return db.getHistoryDao().observe(id).map {
 			it?.toMangaHistory()
 		}
-	}
-
-	fun observeHasItems(): Flow<Boolean> {
-		return db.getHistoryDao().observeCount()
-			.map { it > 0 }
-			.distinctUntilChanged()
 	}
 
 	suspend fun addOrUpdate(manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, force: Boolean) {
@@ -132,8 +144,9 @@ class HistoryRepository @Inject constructor(
 
 	suspend fun getProgress(mangaId: Long, mode: ProgressIndicatorMode): ReadingProgress? {
 		val entity = db.getHistoryDao().find(mangaId) ?: return null
+		val fixedPercent = if (ReadingProgress.isCompleted(entity.percent)) 1f else entity.percent
 		return ReadingProgress(
-			percent = entity.percent,
+			percent = fixedPercent,
 			totalChapters = entity.chaptersCount,
 			mode = mode,
 		).takeIf { it.isValid() }
@@ -143,12 +156,19 @@ class HistoryRepository @Inject constructor(
 		db.getHistoryDao().clear()
 	}
 
-	suspend fun delete(manga: Manga) {
+	suspend fun delete(manga: Manga) = db.withTransaction {
 		db.getHistoryDao().delete(manga.id)
+		mangaRepository.gcChaptersCache()
 	}
 
-	suspend fun deleteAfter(minDate: Long) {
+	suspend fun deleteAfter(minDate: Long) = db.withTransaction {
 		db.getHistoryDao().deleteAfter(minDate)
+		mangaRepository.gcChaptersCache()
+	}
+
+	suspend fun deleteNotFavorite() = db.withTransaction {
+		db.getHistoryDao().deleteNotFavorite()
+		mangaRepository.gcChaptersCache()
 	}
 
 	suspend fun delete(ids: Collection<Long>): ReversibleHandle {
@@ -156,6 +176,7 @@ class HistoryRepository @Inject constructor(
 			for (id in ids) {
 				db.getHistoryDao().delete(id)
 			}
+			mangaRepository.gcChaptersCache()
 		}
 		return ReversibleHandle {
 			recover(ids)
@@ -168,21 +189,23 @@ class HistoryRepository @Inject constructor(
 	 */
 	suspend fun deleteOrSwap(manga: Manga, alternative: Manga?) {
 		if (alternative == null || db.getMangaDao().update(alternative.toEntity()) <= 0) {
-			db.getHistoryDao().delete(manga.id)
+			delete(manga)
 		}
 	}
 
 	suspend fun getPopularTags(limit: Int): List<MangaTag> {
-		return db.getHistoryDao().findPopularTags(limit).map { x -> x.toMangaTag() }
+		return db.getHistoryDao().findPopularTags(limit).toMangaTagsList()
 	}
 
-	fun shouldSkip(manga: Manga): Boolean {
-		return ((manga.source.isNsfw() || manga.isNsfw) && settings.isHistoryExcludeNsfw) || settings.isIncognitoModeEnabled
+	suspend fun getPopularSources(limit: Int): List<MangaSource> {
+		return db.getHistoryDao().findPopularSources(limit).toMangaSources()
 	}
+
+	fun shouldSkip(manga: Manga): Boolean = settings.isIncognitoModeEnabled(manga.isNsfw())
 
 	fun observeShouldSkip(manga: Manga): Flow<Boolean> {
 		return settings.observe()
-			.filter { key -> key == AppSettings.KEY_INCOGNITO_MODE || key == AppSettings.KEY_HISTORY_EXCLUDE_NSFW }
+			.filter { key -> key == AppSettings.KEY_INCOGNITO_MODE || key == AppSettings.KEY_INCOGNITO_NSFW }
 			.onStart { emit("") }
 			.map { shouldSkip(manga) }
 			.distinctUntilChanged()
@@ -208,4 +231,6 @@ class HistoryRepository @Inject constructor(
 		db.getHistoryDao().update(newEntity)
 		return newEntity
 	}
+
+	private fun HistoryWithManga.toManga() = manga.toManga(tags.toMangaTags(), null)
 }

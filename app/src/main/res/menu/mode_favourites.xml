@@ -22,9 +22,21 @@
 		app:showAsAction="ifRoom|withText" />
 
 	<item
+		android:id="@+id/action_fix"
+		android:icon="@drawable/ic_auto_fix"
+		android:title="@string/fix"
+		app:showAsAction="ifRoom|withText" />
+
+	<item
 		android:id="@+id/action_favourite"
 		android:icon="@drawable/ic_heart"
 		android:title="@string/categories"
+		app:showAsAction="ifRoom|withText" />
+
+	<item
+		android:id="@+id/action_edit_override"
+		android:icon="@drawable/ic_edit"
+		android:title="@string/edit"
 		app:showAsAction="ifRoom|withText" />
 
 	<item

@@ -4,25 +4,18 @@ import androidx.collection.ArrayMap
 import androidx.collection.ArraySet
 import androidx.collection.LongSet
 import org.koitharu.kotatsu.BuildConfig
-import java.util.Collections
 import java.util.EnumSet
-
-inline fun <T> MutableSet(size: Int, init: (index: Int) -> T): MutableSet<T> {
-	val set = ArraySet<T>(size)
-	repeat(size) { index -> set.add(init(index)) }
-	return set
-}
-
-inline fun <T> Set(size: Int, init: (index: Int) -> T): Set<T> = when (size) {
-	0 -> emptySet()
-	1 -> Collections.singleton(init(0))
-	else -> MutableSet(size, init)
-}
 
 fun <T> Collection<T>.asArrayList(): ArrayList<T> = if (this is ArrayList<*>) {
 	this as ArrayList<T>
 } else {
 	ArrayList(this)
+}
+
+fun <E : Enum<E>> Set<E>.asEnumSet(cls: Class<E>): EnumSet<E> = if (this is EnumSet<*>) {
+	this as EnumSet<E>
+} else {
+	EnumSet.noneOf(cls).apply { addAll(this@asEnumSet) }
 }
 
 fun <K, V> Map<K, V>.findKeyByValue(value: V): K? {
@@ -70,15 +63,6 @@ fun <T> Iterable<T>.sortedWithSafe(comparator: Comparator<in T>): List<T> = try 
 	}
 }
 
-fun Collection<*>?.sizeOrZero() = this?.size ?: 0
-
-@Suppress("UNCHECKED_CAST")
-inline fun <T, reified R> Collection<T>.mapToArray(transform: (T) -> R): Array<R> {
-	val result = arrayOfNulls<R>(size)
-	forEachIndexed { index, t -> result[index] = transform(t) }
-	return result as Array<R>
-}
-
 fun LongSet.toLongArray(): LongArray {
 	val result = LongArray(size)
 	var i = 0
@@ -86,8 +70,27 @@ fun LongSet.toLongArray(): LongArray {
 	return result
 }
 
-fun LongSet.toSet(): Set<Long> = toCollection(ArraySet<Long>(size))
+fun LongSet.toSet(): Set<Long> = toCollection(ArraySet(size))
 
 fun <R : MutableCollection<Long>> LongSet.toCollection(out: R): R = out.also { result ->
 	forEach(result::add)
+}
+
+fun <T, R> Collection<T>.mapSortedByCount(isDescending: Boolean = true, mapper: (T) -> R): List<R> {
+	val grouped = groupBy(mapper).toList()
+	val sortSelector: (Pair<R, List<T>>) -> Int = { it.second.size }
+	val sorted = if (isDescending) {
+		grouped.sortedByDescending(sortSelector)
+	} else {
+		grouped.sortedBy(sortSelector)
+	}
+	return sorted.map { it.first }
+}
+
+fun Collection<CharSequence?>.contains(element: CharSequence?, ignoreCase: Boolean): Boolean = any { x ->
+	(x == null && element == null) || (x != null && element != null && x.contains(element, ignoreCase))
+}
+
+fun Collection<CharSequence?>.indexOfContains(element: CharSequence?, ignoreCase: Boolean): Int = indexOfFirst { x ->
+	(x == null && element == null) || (x != null && element != null && x.contains(element, ignoreCase))
 }

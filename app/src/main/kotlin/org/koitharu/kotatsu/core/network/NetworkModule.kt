@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.core.network
 
 import android.content.Context
-import android.util.AndroidRuntimeException
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -17,8 +16,10 @@ import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
 import org.koitharu.kotatsu.core.network.cookies.PreferencesCookieJar
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.network.imageproxy.RealImageProxyInterceptor
+import org.koitharu.kotatsu.core.network.proxy.ProxyProvider
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.assertNotInMainThread
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import java.util.concurrent.TimeUnit
 import javax.inject.Provider
@@ -40,9 +41,10 @@ interface NetworkModule {
 		@Singleton
 		fun provideCookieJar(
 			@ApplicationContext context: Context
-		): MutableCookieJar = try {
+		): MutableCookieJar = runCatching {
 			AndroidCookieJar()
-		} catch (e: AndroidRuntimeException) {
+		}.getOrElse { e ->
+			e.printStackTraceDebug()
 			// WebView is not available
 			PreferencesCookieJar(context)
 		}
@@ -61,19 +63,20 @@ interface NetworkModule {
 			cache: Cache,
 			cookieJar: CookieJar,
 			settings: AppSettings,
+			proxyProvider: ProxyProvider,
 		): OkHttpClient = OkHttpClient.Builder().apply {
 			assertNotInMainThread()
 			connectTimeout(20, TimeUnit.SECONDS)
 			readTimeout(60, TimeUnit.SECONDS)
 			writeTimeout(20, TimeUnit.SECONDS)
 			cookieJar(cookieJar)
-			proxySelector(AppProxySelector(settings))
-			proxyAuthenticator(ProxyAuthenticator(settings))
+			proxySelector(proxyProvider.selector)
+			proxyAuthenticator(proxyProvider.authenticator)
 			dns(DoHManager(cache, settings))
 			if (settings.isSSLBypassEnabled) {
 				disableCertificateVerification()
 			} else {
-				installExtraCertsificates(contextProvider.get())
+				installExtraCertificates(contextProvider.get())
 			}
 			cache(cache)
 			addInterceptor(GZipInterceptor())

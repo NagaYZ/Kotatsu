@@ -8,7 +8,6 @@ import android.util.AttributeSet
 import androidx.core.view.ancestors
 import androidx.recyclerview.widget.RecyclerView
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
-import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.util.ext.resolveDp
 import kotlin.math.roundToInt
 
@@ -24,7 +23,7 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	override fun onDraw(canvas: Canvas) {
 		super.onDraw(canvas)
-		if (BuildConfig.DEBUG) {
+		if (isDebug) {
 			drawDebug(canvas)
 		}
 	}
@@ -99,8 +98,9 @@ class WebtoonImageView @JvmOverloads constructor(
 
 	override fun onDownSamplingChanged() {
 		super.onDownSamplingChanged()
-		post {
+		if (isReady) {
 			adjustScale()
+			onImageEventListener.onReady()
 		}
 	}
 
@@ -132,7 +132,7 @@ class WebtoonImageView @JvmOverloads constructor(
 		val paint = debugPaint ?: Paint(Paint.ANTI_ALIAS_FLAG).apply {
 			color = android.graphics.Color.RED
 			strokeWidth = context.resources.resolveDp(2f)
-			textAlign = android.graphics.Paint.Align.LEFT
+			textAlign = Paint.Align.LEFT
 			textSize = context.resources.resolveDp(14f)
 			debugPaint = this
 		}

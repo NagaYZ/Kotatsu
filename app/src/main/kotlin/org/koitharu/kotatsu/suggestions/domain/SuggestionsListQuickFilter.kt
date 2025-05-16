@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.suggestions.domain
 
-import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.MangaListQuickFilter
@@ -17,14 +16,10 @@ class SuggestionsListQuickFilter @Inject constructor(
 		}
 		if (!settings.isNsfwContentDisabled && !settings.isSuggestionsExcludeNsfw) {
 			add(ListFilterOption.Macro.NSFW)
-			add(
-				ListFilterOption.Inverted(
-					option = ListFilterOption.Macro.NSFW,
-					iconResId = R.drawable.ic_sfw,
-					titleResId = R.string.sfw,
-					titleText = null,
-				),
-			)
+			add(ListFilterOption.SFW)
+		}
+		suggestionRepository.getTopSources(3).mapTo(this) {
+			ListFilterOption.Source(it)
 		}
 	}
 }

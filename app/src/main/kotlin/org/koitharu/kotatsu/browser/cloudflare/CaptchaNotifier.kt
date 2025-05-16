@@ -9,26 +9,32 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.PendingIntentCompat
 import androidx.core.net.toUri
-import coil.EventListener
-import coil.request.ErrorResult
-import coil.request.ImageRequest
+import coil3.EventListener
+import coil3.Extras
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
 class CaptchaNotifier(
 	private val context: Context,
-) : EventListener {
+) : EventListener() {
 
 	fun notify(exception: CloudFlareProtectedException) {
 		if (!context.checkNotificationPermission(CHANNEL_ID)) {
 			return
 		}
+		if (exception.source != null && SourceSettings(context, exception.source).isCaptchaNotificationsDisabled) {
+			return
+		}
 		val manager = NotificationManagerCompat.from(context)
-		val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+		val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
 			.setName(context.getString(R.string.captcha_required))
 			.setShowBadge(true)
 			.setVibrationEnabled(false)
@@ -37,13 +43,13 @@ class CaptchaNotifier(
 			.build()
 		manager.createNotificationChannel(channel)
 
-		val intent = CloudFlareActivity.newIntent(context, exception)
+		val intent = AppRouter.cloudFlareResolveIntent(context, exception)
 			.setData(exception.url.toUri())
 		val notification = NotificationCompat.Builder(context, CHANNEL_ID)
 			.setContentTitle(channel.name)
-			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
-			.setDefaults(NotificationCompat.DEFAULT_SOUND)
-			.setSmallIcon(android.R.drawable.stat_notify_error)
+			.setPriority(NotificationCompat.PRIORITY_LOW)
+			.setDefaults(0)
+			.setSmallIcon(R.drawable.ic_bot)
 			.setGroup(GROUP_CAPTCHA)
 			.setAutoCancel(true)
 			.setVisibility(
@@ -84,20 +90,19 @@ class CaptchaNotifier(
 	override fun onError(request: ImageRequest, result: ErrorResult) {
 		super.onError(request, result)
 		val e = result.throwable
-		if (e is CloudFlareProtectedException && request.parameters.value<Boolean>(PARAM_IGNORE_CAPTCHA) != true) {
+		if (e is CloudFlareProtectedException && request.extras[ignoreCaptchaKey] != true) {
 			notify(e)
 		}
 	}
 
 	companion object {
 
-		fun ImageRequest.Builder.ignoreCaptchaErrors() = setParameter(
-			key = PARAM_IGNORE_CAPTCHA,
-			value = true,
-			memoryCacheKey = null,
-		)
+		fun ImageRequest.Builder.ignoreCaptchaErrors() = apply {
+			extras[ignoreCaptchaKey] = true
+		}
 
-		private const val PARAM_IGNORE_CAPTCHA = "ignore_captcha"
+		val ignoreCaptchaKey = Extras.Key(false)
+
 		private const val CHANNEL_ID = "captcha"
 		private const val TAG = CHANNEL_ID
 		private const val GROUP_CAPTCHA = "org.koitharu.kotatsu.CAPTCHA"

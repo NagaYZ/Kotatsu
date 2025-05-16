@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.local.domain.model
 
+import android.net.Uri
 import androidx.core.net.toFile
 import androidx.core.net.toUri
+import org.koitharu.kotatsu.core.util.ext.contains
 import org.koitharu.kotatsu.core.util.ext.creationTime
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
@@ -21,19 +23,24 @@ data class LocalManga(
 			return field
 		}
 
+	fun toUri(): Uri = manga.url.toUri()
+
 	fun isMatchesQuery(query: String): Boolean {
 		return manga.title.contains(query, ignoreCase = true) ||
-			manga.altTitle?.contains(query, ignoreCase = true) == true
+			manga.altTitles.contains(query, ignoreCase = true) ||
+			manga.authors.contains(query, ignoreCase = true)
 	}
 
-	fun containsTags(tags: Set<MangaTag>): Boolean {
-		return manga.tags.containsAll(tags)
+	fun containsTags(tags: Collection<String>): Boolean {
+		return tags.all { tag -> tag in manga.tags }
 	}
 
-	fun containsAnyTag(tags: Set<MangaTag>): Boolean {
-		return tags.any { tag ->
-			manga.tags.contains(tag)
-		}
+	fun containsAnyTag(tags: Collection<String>): Boolean {
+		return tags.any { tag -> tag in manga.tags }
+	}
+
+	private operator fun Collection<MangaTag>.contains(title: String): Boolean {
+		return any { it.title.equals(title, ignoreCase = true) }
 	}
 
 	override fun toString(): String {

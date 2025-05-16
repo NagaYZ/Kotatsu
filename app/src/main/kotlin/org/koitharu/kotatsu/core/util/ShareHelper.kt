@@ -1,13 +1,12 @@
 package org.koitharu.kotatsu.core.util
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.core.app.ShareCompat
 import androidx.core.content.FileProvider
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.logs.FileLogger
 import org.koitharu.kotatsu.core.model.appUrl
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
@@ -16,6 +15,7 @@ private const val TYPE_TEXT = "text/plain"
 private const val TYPE_IMAGE = "image/*"
 private const val TYPE_CBZ = "application/x-cbz"
 
+@Deprecated("")
 class ShareHelper(private val context: Context) {
 
 	fun shareMangaLink(manga: Manga) {
@@ -77,32 +77,9 @@ class ShareHelper(private val context: Context) {
 			.startChooser()
 	}
 
-	fun shareText(text: String) {
-		ShareCompat.IntentBuilder(context)
-			.setText(text)
-			.setType(TYPE_TEXT)
-			.setChooserTitle(R.string.share)
-			.startChooser()
-	}
-
-	fun shareLogs(loggers: Collection<FileLogger>) {
-		val intentBuilder = ShareCompat.IntentBuilder(context)
-			.setType(TYPE_TEXT)
-		var hasLogs = false
-		for (logger in loggers) {
-			val logFile = logger.file
-			if (!logFile.exists()) {
-				continue
-			}
-			val uri = FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.files", logFile)
-			intentBuilder.addStream(uri)
-			hasLogs = true
-		}
-		if (hasLogs) {
-			intentBuilder.setChooserTitle(R.string.share_logs)
-			intentBuilder.startChooser()
-		} else {
-			Toast.makeText(context, R.string.nothing_here, Toast.LENGTH_SHORT).show()
-		}
-	}
+	fun getShareTextIntent(text: String): Intent = ShareCompat.IntentBuilder(context)
+		.setText(text)
+		.setType(TYPE_TEXT)
+		.setChooserTitle(R.string.share)
+		.createChooserIntent()
 }

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.preference.PreferenceScreen
 	xmlns:android="http://schemas.android.com/apk/res/android"
-	xmlns:app="http://schemas.android.com/apk/res-auto">
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:title="@string/remote_sources">
 
 	<ListPreference
 		android:key="sources_sort_order"
@@ -19,16 +20,35 @@
 		android:persistent="false"
 		android:title="@string/manage_sources" />
 
+	<SwitchPreferenceCompat
+		android:defaultValue="false"
+		android:key="sources_enabled_all"
+		android:summary="@string/enable_all_sources_summary"
+		android:title="@string/enable_all_sources"
+		app:allowDividerAbove="true" />
+
 	<Preference
 		android:key="sources_catalog"
 		android:persistent="false"
-		android:title="@string/sources_catalog"
-		app:allowDividerAbove="true" />
+		android:title="@string/sources_catalog" />
 
 	<SwitchPreferenceCompat
 		android:defaultValue="false"
 		android:key="no_nsfw"
 		android:summary="@string/disable_nsfw_summary"
 		android:title="@string/disable_nsfw" />
+
+	<SwitchPreferenceCompat
+		android:defaultValue="true"
+		android:key="tags_warnings"
+		android:summary="@string/tags_warnings_summary"
+		android:title="@string/tags_warnings" />
+
+	<SwitchPreferenceCompat
+		android:key="handle_links"
+		android:persistent="false"
+		android:summary="@string/handle_links_summary"
+		android:title="@string/handle_links"
+		app:allowDividerAbove="true" />
 
 </androidx.preference.PreferenceScreen>

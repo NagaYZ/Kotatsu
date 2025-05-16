@@ -6,19 +6,18 @@ import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
-import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
+import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
+import org.koitharu.kotatsu.parsers.model.MangaListFilterOptions
 import org.koitharu.kotatsu.parsers.model.MangaPage
-import org.koitharu.kotatsu.parsers.model.MangaState
-import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import java.util.EnumSet
-import java.util.Locale
 
 class ExternalMangaRepository(
-	private val contentResolver: ContentResolver,
+	contentResolver: ContentResolver,
 	override val source: ExternalMangaSource,
 	cache: MemoryContentCache,
 ) : CachingMangaRepository(cache) {
@@ -33,31 +32,23 @@ class ExternalMangaRepository(
 		}.getOrNull()
 	}
 
+	private val filterOptions = suspendLazy(initializer = contentSource::getListFilterOptions)
+
 	override val sortOrders: Set<SortOrder>
-		get() = capabilities?.availableSortOrders ?: EnumSet.of(SortOrder.ALPHABETICAL)
+		get() = capabilities?.availableSortOrders ?: EnumSet.of(SortOrder.POPULARITY)
 
-	override val states: Set<MangaState>
-		get() = capabilities?.availableStates.orEmpty()
-
-	override val contentRatings: Set<ContentRating>
-		get() = capabilities?.availableContentRating.orEmpty()
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = capabilities?.listFilterCapabilities ?: MangaListFilterCapabilities()
 
 	override var defaultSortOrder: SortOrder
-		get() = capabilities?.defaultSortOrder ?: SortOrder.ALPHABETICAL
+		get() = capabilities?.availableSortOrders?.firstOrNull() ?: SortOrder.ALPHABETICAL
 		set(value) = Unit
 
-	override val isMultipleTagsSupported: Boolean
-		get() = capabilities?.isMultipleTagsSupported ?: true
+	override suspend fun getFilterOptions(): MangaListFilterOptions = filterOptions.get()
 
-	override val isTagsExclusionSupported: Boolean
-		get() = capabilities?.isTagsExclusionSupported ?: false
-
-	override val isSearchSupported: Boolean
-		get() = capabilities?.isSearchSupported ?: true
-
-	override suspend fun getList(offset: Int, filter: MangaListFilter?): List<Manga> =
+	override suspend fun getList(offset: Int, order: SortOrder?, filter: MangaListFilter?): List<Manga> =
 		runInterruptible(Dispatchers.IO) {
-			contentSource.getList(offset, filter)
+			contentSource.getList(offset, order ?: defaultSortOrder, filter ?: MangaListFilter.EMPTY)
 		}
 
 	override suspend fun getDetailsImpl(manga: Manga): Manga = runInterruptible(Dispatchers.IO) {
@@ -68,13 +59,9 @@ class ExternalMangaRepository(
 		contentSource.getPages(chapter)
 	}
 
-	override suspend fun getPageUrl(page: MangaPage): String = page.url // TODO
-
-	override suspend fun getTags(): Set<MangaTag> = runInterruptible(Dispatchers.IO) {
-		contentSource.getTags()
+	override suspend fun getPageUrl(page: MangaPage): String = runInterruptible(Dispatchers.IO) {
+		contentSource.getPageUrl(page.url)
 	}
-
-	override suspend fun getLocales(): Set<Locale> = emptySet() // TODO
 
 	override suspend fun getRelatedMangaImpl(seed: Manga): List<Manga> = emptyList() // TODO
 }

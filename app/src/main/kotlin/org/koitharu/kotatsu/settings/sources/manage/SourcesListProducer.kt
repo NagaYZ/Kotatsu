@@ -3,7 +3,6 @@ package org.koitharu.kotatsu.settings.sources.manage
 import android.content.Context
 import androidx.room.InvalidationTracker
 import dagger.hilt.android.ViewModelLifecycle
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
@@ -15,20 +14,24 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.db.TABLE_SOURCES
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.lifecycleScope
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
+import org.koitharu.kotatsu.parsers.model.MangaParserSource
+import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.settings.sources.model.SourceConfigItem
 import javax.inject.Inject
 
 @ViewModelScoped
 class SourcesListProducer @Inject constructor(
 	lifecycle: ViewModelLifecycle,
-	@ApplicationContext private val context: Context,
+	@LocalizedAppContext private val context: Context,
 	private val repository: MangaSourcesRepository,
 	private val settings: AppSettings,
 ) : InvalidationTracker.Observer(TABLE_SOURCES) {
@@ -63,10 +66,11 @@ class SourcesListProducer @Inject constructor(
 	}
 
 	private suspend fun buildList(): List<SourceConfigItem> {
-		val enabledSources = repository.getEnabledSources()
-		val pinned = repository.getPinnedSources()
+		val enabledSources = repository.getEnabledSources().filter { it.unwrap() is MangaParserSource }
+		val pinned = repository.getPinnedSources().mapToSet { it.name }
 		val isNsfwDisabled = settings.isNsfwContentDisabled
 		val isReorderAvailable = settings.sourcesSortOrder == SourcesSortOrder.MANUAL
+		val isDisableAvailable = !settings.isAllSourcesEnabled
 		val withTip = isReorderAvailable && settings.isTipEnabled(TIP_REORDER)
 		val enabledSet = enabledSources.toSet()
 		if (query.isNotEmpty()) {
@@ -79,7 +83,8 @@ class SourcesListProducer @Inject constructor(
 					isEnabled = it in enabledSet,
 					isDraggable = false,
 					isAvailable = !isNsfwDisabled || !it.isNsfw(),
-					isPinned = it in pinned,
+					isPinned = it.name in pinned,
+					isDisableAvailable = isDisableAvailable,
 				)
 			}.ifEmpty {
 				listOf(SourceConfigItem.EmptySearchResult)
@@ -100,7 +105,8 @@ class SourcesListProducer @Inject constructor(
 					isEnabled = true,
 					isDraggable = isReorderAvailable,
 					isAvailable = false,
-					isPinned = it in pinned,
+					isPinned = it.name in pinned,
+					isDisableAvailable = isDisableAvailable,
 				)
 			}
 		}

@@ -4,23 +4,28 @@ import android.text.style.ForegroundColorSpan
 import androidx.core.content.ContextCompat
 import androidx.core.text.buildSpannedString
 import androidx.core.text.inSpans
+import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
-import coil.ImageLoader
-import coil.request.ImageRequest
-import coil.transform.CircleCropTransformation
+import coil3.ImageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowRgb565
+import coil3.request.crossfade
+import coil3.request.error
+import coil3.request.fallback
+import coil3.request.lifecycle
+import coil3.request.placeholder
+import coil3.request.transformations
+import coil3.transform.RoundedCornersTransformation
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.ui.image.ChipIconTarget
-import org.koitharu.kotatsu.core.ui.image.CoverSizeResolver
-import org.koitharu.kotatsu.core.ui.image.TrimTransformation
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
-import org.koitharu.kotatsu.core.util.ext.defaultPlaceholders
 import org.koitharu.kotatsu.core.util.ext.enqueueWith
-import org.koitharu.kotatsu.core.util.ext.newImageRequest
-import org.koitharu.kotatsu.core.util.ext.source
+import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
+import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.databinding.ItemMangaAlternativeBinding
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -43,10 +48,22 @@ fun alternativeAD(
 	binding.chipSource.setOnClickListener(clickListener)
 
 	bind { payloads ->
-		binding.textViewTitle.text = item.manga.title
+		binding.textViewTitle.text = item.mangaModel.title
+		with(binding.iconsView) {
+			clearIcons()
+			if (item.mangaModel.isSaved) addIcon(R.drawable.ic_storage)
+			if (item.mangaModel.isFavorite) addIcon(R.drawable.ic_heart_outline)
+			isVisible = iconsCount > 0
+		}
 		binding.textViewSubtitle.text = buildSpannedString {
 			if (item.chaptersCount > 0) {
-				append(context.resources.getQuantityString(R.plurals.chapters, item.chaptersCount, item.chaptersCount))
+				append(
+					context.resources.getQuantityStringSafe(
+						R.plurals.chapters,
+						item.chaptersCount,
+						item.chaptersCount,
+					),
+				)
 			} else {
 				append(context.getString(R.string.no_chapters))
 			}
@@ -62,7 +79,10 @@ fun alternativeAD(
 				}
 			}
 		}
-		binding.progressView.setProgress(item.progress, ListModelDiffCallback.PAYLOAD_PROGRESS_CHANGED in payloads)
+		binding.progressView.setProgress(
+			item.mangaModel.progress,
+			ListModelDiffCallback.PAYLOAD_PROGRESS_CHANGED in payloads,
+		)
 		binding.chipSource.also { chip ->
 			chip.text = item.manga.source.getTitle(chip.context)
 			ImageRequest.Builder(context)
@@ -74,19 +94,11 @@ fun alternativeAD(
 				.placeholder(R.drawable.ic_web)
 				.fallback(R.drawable.ic_web)
 				.error(R.drawable.ic_web)
-				.source(item.manga.source)
-				.transformations(CircleCropTransformation())
+				.mangaSourceExtra(item.manga.source)
+				.transformations(RoundedCornersTransformation(context.resources.getDimension(R.dimen.chip_icon_corner)))
 				.allowRgb565(true)
 				.enqueueWith(coil)
 		}
-		binding.imageViewCover.newImageRequest(lifecycleOwner, item.manga.coverUrl)?.run {
-			size(CoverSizeResolver(binding.imageViewCover))
-			defaultPlaceholders(context)
-			transformations(TrimTransformation())
-			allowRgb565(true)
-			tag(item.manga)
-			source(item.manga.source)
-			enqueueWith(coil)
-		}
+		binding.imageViewCover.setImageAsync(item.manga.coverUrl, item.manga)
 	}
 }

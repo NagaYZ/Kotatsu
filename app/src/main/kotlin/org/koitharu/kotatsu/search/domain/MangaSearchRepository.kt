@@ -37,7 +37,7 @@ class MangaSearchRepository @Inject constructor(
 
 	suspend fun getMangaSuggestion(query: String, limit: Int, source: MangaSource?): List<Manga> {
 		return when {
-			query.isEmpty() -> db.getSuggestionDao().getRandom(limit).map { MangaWithTags(it.manga, it.tags) }
+			query.isEmpty() -> db.getSuggestionDao().getRandom(limit).map { MangaWithTags(it.manga, emptyList()) }
 			source != null -> db.getMangaDao().searchByTitle("%$query%", source.name, limit)
 			else -> db.getMangaDao().searchByTitle("%$query%", limit)
 		}.let {
@@ -123,6 +123,10 @@ class MangaSearchRepository @Inject constructor(
 
 	suspend fun getRareTags(source: MangaSource, limit: Int): List<MangaTag> {
 		return db.getTagsDao().findRareTags(source.name, limit).toMangaTagsList()
+	}
+
+	suspend fun getTopTags(source: MangaSource, limit: Int): List<MangaTag> {
+		return db.getTagsDao().findPopularTags(source.name, limit).toMangaTagsList()
 	}
 
 	suspend fun getSourcesSuggestion(limit: Int): List<MangaSource> = sourcesRepository.getTopSources(limit)

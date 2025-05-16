@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
@@ -15,12 +16,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.model.DateTimeAgo
+import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.domain.QuickFilterListener
 import org.koitharu.kotatsu.list.ui.model.EmptyState
@@ -61,13 +66,13 @@ class FeedViewModel @Inject constructor(
 		valueProducer = { isFeedHeaderVisible },
 	)
 
-	val onFeedCleared = MutableEventFlow<Unit>()
+	val onActionDone = MutableEventFlow<ReversibleAction>()
 
 	@Suppress("USELESS_CAST")
 	val content = combine(
 		observeHeader(),
 		quickFilter.appliedOptions,
-		combine(limit, quickFilter.appliedOptions, ::Pair)
+		combine(limit, quickFilter.appliedOptions.combineWithSettings(), ::Pair)
 			.flatMapLatest { repository.observeTrackingLog(it.first, it.second) },
 	) { header, filters, list ->
 		val result = ArrayList<ListModel>((list.size * 1.4).toInt().coerceAtLeast(3))
@@ -103,7 +108,7 @@ class FeedViewModel @Inject constructor(
 			if (clearCounters) {
 				repository.clearCounters()
 			}
-			onFeedCleared.call(Unit)
+			onActionDone.call(ReversibleAction(R.string.updates_feed_cleared, null))
 		}
 	}
 
@@ -141,19 +146,29 @@ class FeedViewModel @Inject constructor(
 
 	private fun observeHeader() = isHeaderEnabled.flatMapLatest { hasHeader ->
 		if (hasHeader) {
-			quickFilter.appliedOptions.flatMapLatest {
+			quickFilter.appliedOptions.combineWithSettings().flatMapLatest {
 				repository.observeUpdatedManga(10, it)
 			}.map { mangaList ->
 				if (mangaList.isEmpty()) {
 					null
 				} else {
 					UpdatedMangaHeader(
-						mangaList.map { mangaListMapper.toGridModel(it.manga) },
+						mangaList.map { mangaListMapper.toListModel(it.manga, ListMode.GRID) },
 					)
 				}
 			}
 		} else {
 			flowOf(null)
+		}
+	}
+
+	private fun Flow<Set<ListFilterOption>>.combineWithSettings(): Flow<Set<ListFilterOption>> = combine(
+		settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
+	) { filters, skipNsfw ->
+		if (skipNsfw) {
+			filters + ListFilterOption.SFW
+		} else {
+			filters
 		}
 	}
 }

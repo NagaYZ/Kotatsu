@@ -11,6 +11,8 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.view.children
 import androidx.core.view.descendants
 import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.ViewHolder
 import androidx.swiperefreshlayout.widget.CircularProgressDrawable
@@ -18,8 +20,10 @@ import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.progressindicator.BaseProgressIndicator
+import com.google.android.material.slider.RangeSlider
 import com.google.android.material.slider.Slider
 import com.google.android.material.tabs.TabLayout
+import org.koitharu.kotatsu.core.ui.OnContextClickListenerCompat
 import kotlin.math.roundToInt
 
 fun View.hasGlobalPoint(x: Int, y: Int): Boolean {
@@ -30,6 +34,9 @@ fun View.hasGlobalPoint(x: Int, y: Int): Boolean {
 	getGlobalVisibleRect(rect)
 	return rect.contains(x, y)
 }
+
+val ViewGroup.hasVisibleChildren: Boolean
+	get() = children.any { it.isVisible }
 
 fun View.measureHeight(): Int {
 	val vh = height
@@ -66,6 +73,11 @@ fun ViewPager2.findCurrentViewHolder(): ViewHolder? {
 	return recyclerView?.findViewHolderForAdapterPosition(currentItem)
 }
 
+fun FragmentManager.findCurrentPagerFragment(pager: ViewPager2): Fragment? {
+	val currentId = pager.adapter?.getItemId(pager.currentItem) ?: pager.currentItem
+	return findFragmentByTag("f$currentId")
+}
+
 fun View.resetTransformations() {
 	alpha = 1f
 	translationX = 0f
@@ -86,6 +98,17 @@ fun Slider.setValueRounded(newValue: Float) {
 		(newValue / step).roundToInt() * step
 	}
 	value = roundedValue.coerceIn(valueFrom, valueTo)
+}
+
+fun RangeSlider.setValuesRounded(vararg newValues: Float) {
+	val step = stepSize
+	values = newValues.map { newValue ->
+		if (step <= 0f) {
+			newValue
+		} else {
+			(newValue / step).roundToInt() * step
+		}.coerceIn(valueFrom, valueTo)
+	}
 }
 
 fun RecyclerView.invalidateNestedItemDecorations() {
@@ -135,15 +158,15 @@ fun TabLayout.setTabsEnabled(enabled: Boolean) {
 
 fun BaseProgressIndicator<*>.showOrHide(value: Boolean) {
 	if (value) {
-		if (!isVisible) show()
+		show()
 	} else {
-		if (isVisible) hide()
+		hide()
 	}
 }
 
-fun View.setOnContextClickListenerCompat(listener: View.OnLongClickListener) {
+fun View.setOnContextClickListenerCompat(listener: OnContextClickListenerCompat) {
 	if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-		setOnContextClickListener(listener::onLongClick)
+		setOnContextClickListener(listener::onContextClick)
 	}
 }
 

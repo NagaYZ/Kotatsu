@@ -1,17 +1,16 @@
 package org.koitharu.kotatsu.download.ui.list
 
-import android.content.Context
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import androidx.core.view.MenuProvider
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.fragment.app.FragmentActivity
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.util.ext.DIALOG_THEME_CENTERED
-import org.koitharu.kotatsu.settings.SettingsActivity
+import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 
 class DownloadsMenuProvider(
-	private val context: Context,
+	private val activity: FragmentActivity,
 	private val viewModel: DownloadsViewModel,
 ) : MenuProvider {
 
@@ -25,10 +24,7 @@ class DownloadsMenuProvider(
 			R.id.action_resume -> viewModel.resumeAll()
 			R.id.action_cancel_all -> confirmCancelAll()
 			R.id.action_remove_completed -> confirmRemoveCompleted()
-			R.id.action_settings -> {
-				context.startActivity(SettingsActivity.newDownloadsSettingsIntent(context))
-			}
-
+			R.id.action_settings -> activity.router.openDownloadsSetting()
 			else -> return false
 		}
 		return true
@@ -42,24 +38,22 @@ class DownloadsMenuProvider(
 	}
 
 	private fun confirmCancelAll() {
-		MaterialAlertDialogBuilder(context, DIALOG_THEME_CENTERED)
-			.setTitle(R.string.cancel_all)
-			.setMessage(R.string.cancel_all_downloads_confirm)
-			.setIcon(R.drawable.ic_cancel_multiple)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.confirm) { _, _ ->
-				viewModel.cancelAll()
-			}.show()
+		buildAlertDialog(activity, isCentered = true) {
+			setTitle(R.string.cancel_all)
+			setMessage(R.string.cancel_all_downloads_confirm)
+			setIcon(R.drawable.ic_cancel_multiple)
+			setNegativeButton(android.R.string.cancel, null)
+			setPositiveButton(R.string.confirm) { _, _ -> viewModel.cancelAll() }
+		}.show()
 	}
 
 	private fun confirmRemoveCompleted() {
-		MaterialAlertDialogBuilder(context, DIALOG_THEME_CENTERED)
-			.setTitle(R.string.remove_completed)
-			.setMessage(R.string.remove_completed_downloads_confirm)
-			.setIcon(R.drawable.ic_clear_all)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.clear) { _, _ ->
-				viewModel.removeCompleted()
-			}.show()
+		buildAlertDialog(activity, isCentered = true) {
+			setTitle(R.string.remove_completed)
+			setMessage(R.string.remove_completed_downloads_confirm)
+			setIcon(R.drawable.ic_clear_all)
+			setNegativeButton(android.R.string.cancel, null)
+			setPositiveButton(R.string.clear) { _, _ -> viewModel.removeCompleted() }
+		}.show()
 	}
 }

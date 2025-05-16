@@ -5,19 +5,21 @@ import android.content.Intent
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import androidx.core.graphics.drawable.toBitmap
-import coil.ImageLoader
-import coil.executeBlocking
-import coil.request.ImageRequest
-import coil.size.Size
-import coil.transform.RoundedCornersTransformation
+import coil3.ImageLoader
+import coil3.executeBlocking
+import coil3.request.ImageRequest
+import coil3.request.transformations
+import coil3.size.Size
+import coil3.transform.RoundedCornersTransformation
 import dagger.Lazy
 import kotlinx.coroutines.runBlocking
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.parser.MangaIntent
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.AppWidgetConfig
 import org.koitharu.kotatsu.core.ui.image.TrimTransformation
 import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
+import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.replaceWith
@@ -73,8 +75,7 @@ class ShelfListFactory(
 				ImageRequest.Builder(context)
 					.data(item.coverUrl)
 					.size(coverSize)
-					.tag(item.source)
-					.tag(item)
+					.mangaExtra(item)
 					.transformations(transformation, TrimTransformation())
 					.build(),
 			).getDrawableOrThrow().toBitmap()
@@ -84,7 +85,7 @@ class ShelfListFactory(
 			views.setImageViewResource(R.id.imageView_cover, R.drawable.ic_placeholder)
 		}
 		val intent = Intent()
-		intent.putExtra(MangaIntent.KEY_ID, item.id)
+		intent.putExtra(AppRouter.KEY_ID, item.id)
 		views.setOnClickFillInIntent(R.id.rootLayout, intent)
 		return views
 	}

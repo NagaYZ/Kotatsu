@@ -18,9 +18,8 @@ abstract class LifecycleAwareViewHolder(
 	private var isCurrent = false
 
 	init {
-		parentLifecycleOwner.lifecycle.addObserver(ParentLifecycleObserver())
-		if (parentLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
-			lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+		itemView.post {
+			parentLifecycleOwner.lifecycle.addObserver(ParentLifecycleObserver())
 		}
 	}
 
@@ -28,6 +27,9 @@ abstract class LifecycleAwareViewHolder(
 		isCurrent = value
 		dispatchResumed()
 	}
+
+	@CallSuper
+	open fun onCreate() = lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
 	@CallSuper
 	open fun onStart() = lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -40,6 +42,9 @@ abstract class LifecycleAwareViewHolder(
 
 	@CallSuper
 	open fun onStop() = lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+
+	@CallSuper
+	open fun onDestroy() = lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
 
 	private fun dispatchResumed() {
 		val isParentResumed = parentLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
@@ -60,28 +65,18 @@ abstract class LifecycleAwareViewHolder(
 
 	private inner class ParentLifecycleObserver : DefaultLifecycleObserver {
 
-		override fun onCreate(owner: LifecycleOwner) {
-			lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-		}
+		override fun onCreate(owner: LifecycleOwner) = this@LifecycleAwareViewHolder.onCreate()
 
-		override fun onStart(owner: LifecycleOwner) {
-			onStart()
-		}
+		override fun onStart(owner: LifecycleOwner) = this@LifecycleAwareViewHolder.onStart()
 
-		override fun onResume(owner: LifecycleOwner) {
-			dispatchResumed()
-		}
+		override fun onResume(owner: LifecycleOwner) = this@LifecycleAwareViewHolder.dispatchResumed()
 
-		override fun onPause(owner: LifecycleOwner) {
-			dispatchResumed()
-		}
+		override fun onPause(owner: LifecycleOwner) = this@LifecycleAwareViewHolder.dispatchResumed()
 
-		override fun onStop(owner: LifecycleOwner) {
-			onStop()
-		}
+		override fun onStop(owner: LifecycleOwner) = this@LifecycleAwareViewHolder.onStop()
 
 		override fun onDestroy(owner: LifecycleOwner) {
-			lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+			this@LifecycleAwareViewHolder.onDestroy()
 			owner.lifecycle.removeObserver(this)
 		}
 	}

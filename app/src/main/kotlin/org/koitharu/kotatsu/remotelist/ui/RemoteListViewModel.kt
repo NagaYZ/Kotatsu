@@ -20,30 +20,28 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.distinctById
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
-import org.koitharu.kotatsu.core.parser.ParserMangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.core.util.ext.getCauseUrl
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
-import org.koitharu.kotatsu.core.util.ext.sizeOrZero
-import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.explore.domain.ExploreRepository
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
-import org.koitharu.kotatsu.filter.ui.MangaFilter
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
+import org.koitharu.kotatsu.list.ui.model.ButtonFooter
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingFooter
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.toErrorFooter
 import org.koitharu.kotatsu.list.ui.model.toErrorState
-import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaListFilter
-import org.koitharu.kotatsu.parsers.model.MangaTag
+import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import javax.inject.Inject
 
 private const val FILTER_MIN_INTERVAL = 250L
@@ -52,13 +50,13 @@ private const val FILTER_MIN_INTERVAL = 250L
 open class RemoteListViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	mangaRepositoryFactory: MangaRepository.Factory,
-	private val filter: FilterCoordinator,
+	final override val filterCoordinator: FilterCoordinator,
 	settings: AppSettings,
-	mangaListMapper: MangaListMapper,
-	downloadScheduler: DownloadWorker.Scheduler,
+	protected val mangaListMapper: MangaListMapper,
 	private val exploreRepository: ExploreRepository,
 	sourcesRepository: MangaSourcesRepository,
-) : MangaListViewModel(settings, downloadScheduler), MangaFilter by filter {
+	mangaDataRepository: MangaDataRepository
+) : MangaListViewModel(settings, mangaDataRepository), FilterCoordinator.Owner {
 
 	val source = MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE])
 	val isRandomLoading = MutableStateFlow(false)
@@ -71,12 +69,6 @@ open class RemoteListViewModel @Inject constructor(
 	private var loadingJob: Job? = null
 	private var randomJob: Job? = null
 
-	val isSearchAvailable: Boolean
-		get() = repository.isSearchSupported
-
-	val browserUrl: String?
-		get() = (repository as? ParserMangaRepository)?.domain?.let { "https://$it" }
-
 	override val content = combine(
 		mangaList.map { it?.skipNsfwIfNeeded() },
 		observeListModeWithTriggers(),
@@ -88,17 +80,18 @@ open class RemoteListViewModel @Inject constructor(
 				list.isNullOrEmpty() && error != null -> add(
 					error.toErrorState(
 						canRetry = true,
-						secondaryAction = if (error !is NotFoundException && browserUrl != null) R.string.open_in_browser else 0,
+						secondaryAction = if (error.getCauseUrl().isNullOrEmpty()) 0 else R.string.open_in_browser,
 					),
 				)
 
 				list == null -> add(LoadingState)
-				list.isEmpty() -> add(createEmptyState(canResetFilter = header.value.isFilterApplied))
+				list.isEmpty() -> add(createEmptyState(canResetFilter = filterCoordinator.isFilterApplied))
 				else -> {
-					mangaListMapper.toListModelList(this, list, mode)
+					mapMangaList(this, list, mode)
 					when {
 						error != null -> add(error.toErrorFooter())
 						hasNext -> add(LoadingFooter())
+						else -> getFooter()?.let(::add)
 					}
 				}
 			}
@@ -107,7 +100,7 @@ open class RemoteListViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, listOf(LoadingState))
 
 	init {
-		filter.observeState()
+		filterCoordinator.observe()
 			.debounce(FILTER_MIN_INTERVAL)
 			.onEach { filterState ->
 				loadingJob?.cancelAndJoin()
@@ -123,26 +116,20 @@ open class RemoteListViewModel @Inject constructor(
 	}
 
 	override fun onRefresh() {
-		loadList(filter.snapshot(), append = false)
+		loadList(filterCoordinator.snapshot(), append = false)
 	}
 
 	override fun onRetry() {
-		loadList(filter.snapshot(), append = !mangaList.value.isNullOrEmpty())
+		loadList(filterCoordinator.snapshot(), append = !mangaList.value.isNullOrEmpty())
 	}
 
 	fun loadNextPage() {
 		if (hasNextPage.value && listError.value == null) {
-			loadList(filter.snapshot(), append = true)
+			loadList(filterCoordinator.snapshot(), append = true)
 		}
 	}
 
-	fun resetFilter() = filter.reset()
-
-	override fun onUpdateFilter(tags: Set<MangaTag>) {
-		applyFilter(tags)
-	}
-
-	protected fun loadList(filterState: MangaListFilter.Advanced, append: Boolean): Job {
+	protected fun loadList(filterState: FilterCoordinator.Snapshot, append: Boolean): Job {
 		loadingJob?.let {
 			if (it.isActive) return it
 		}
@@ -151,7 +138,8 @@ open class RemoteListViewModel @Inject constructor(
 				listError.value = null
 				val list = repository.getList(
 					offset = if (append) mangaList.value.sizeOrZero() else 0,
-					filter = filterState,
+					order = filterState.sortOrder,
+					filter = filterState.listFilter,
 				)
 				val prevList = mangaList.value.orEmpty()
 				if (!append) {
@@ -185,6 +173,24 @@ open class RemoteListViewModel @Inject constructor(
 	)
 
 	protected open suspend fun onBuildList(list: MutableList<ListModel>) = Unit
+
+	protected open suspend fun mapMangaList(
+		destination: MutableCollection<in ListModel>,
+		manga: Collection<Manga>,
+		mode: ListMode
+	) = mangaListMapper.toListModelList(destination, manga, mode)
+
+	protected open fun getFooter(): ButtonFooter? {
+		val filter = filterCoordinator.snapshot().listFilter
+		val hasQuery = !filter.query.isNullOrEmpty()
+		val hasAuthor = !filter.author.isNullOrEmpty()
+		val isOneTag = filter.tags.size == 1
+		return if ((hasQuery xor isOneTag xor hasAuthor) && !(hasQuery && isOneTag && hasAuthor)) {
+			ButtonFooter(R.string.global_search)
+		} else {
+			null
+		}
+	}
 
 	fun openRandom() {
 		if (randomJob?.isActive == true) {

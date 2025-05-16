@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings.sources.catalog
 
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.viewModelScope
 import androidx.room.invalidationTrackerFlow
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,6 +19,7 @@ import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.core.util.ext.mapSortedByCount
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -49,10 +51,10 @@ class SourcesCatalogViewModel @Inject constructor(
 		),
 	)
 
-	val isNsfwDisabled = settings.isNsfwContentDisabled
-
 	val hasNewSources = repository.observeHasNewSources()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, false)
+
+	val contentTypes = MutableStateFlow<List<ContentType>>(emptyList())
 
 	val content: StateFlow<List<ListModel>> = combine(
 		searchQuery,
@@ -64,6 +66,9 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	init {
 		repository.clearNewSourcesBadge()
+		launchJob(Dispatchers.Default) {
+			contentTypes.value = getContentTypes(settings.isNsfwContentDisabled)
+		}
 	}
 
 	fun performSearch(query: String?) {
@@ -127,6 +132,16 @@ class SourcesCatalogViewModel @Inject constructor(
 			sources.map {
 				SourceCatalogItem.Source(source = it)
 			}
+		}
+	}
+
+	@WorkerThread
+	private fun getContentTypes(isNsfwDisabled: Boolean): List<ContentType> {
+		val result = repository.allMangaSources.mapSortedByCount { it.contentType }
+		return if (isNsfwDisabled) {
+			result.filterNot { it == ContentType.HENTAI }
+		} else {
+			result
 		}
 	}
 }

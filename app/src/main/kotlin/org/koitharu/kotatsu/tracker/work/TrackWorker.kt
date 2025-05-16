@@ -25,6 +25,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import androidx.work.await
+import dagger.Lazy
 import dagger.Reusable
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -44,16 +45,21 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.browser.cloudflare.CaptchaNotifier
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
-import org.koitharu.kotatsu.core.logs.FileLogger
-import org.koitharu.kotatsu.core.logs.TrackerLogger
+import org.koitharu.kotatsu.core.model.ids
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.TrackerDownloadStrategy
+import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.util.ext.awaitUniqueWorkInfoByName
 import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.onEachIndexed
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
+import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.toIntUp
-import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
 import org.koitharu.kotatsu.tracker.domain.CheckNewChaptersUseCase
 import org.koitharu.kotatsu.tracker.domain.GetTracksUseCase
@@ -64,7 +70,7 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.math.roundToInt
-import com.google.android.material.R as materialR
+import androidx.appcompat.R as appcompatR
 
 @HiltWorker
 class TrackWorker @AssistedInject constructor(
@@ -75,7 +81,8 @@ class TrackWorker @AssistedInject constructor(
 	private val getTracksUseCase: GetTracksUseCase,
 	private val checkNewChaptersUseCase: CheckNewChaptersUseCase,
 	private val workManager: WorkManager,
-	@TrackerLogger private val logger: FileLogger,
+	private val localRepositoryLazy: Lazy<LocalMangaRepository>,
+	private val downloadSchedulerLazy: Lazy<DownloadWorker.Scheduler>,
 ) : CoroutineWorker(context, workerParams) {
 
 	private val notificationManager by lazy { NotificationManagerCompat.from(applicationContext) }
@@ -83,17 +90,15 @@ class TrackWorker @AssistedInject constructor(
 	override suspend fun doWork(): Result {
 		notificationHelper.updateChannels()
 		val isForeground = trySetForeground()
-		logger.log("doWork(): attempt $runAttemptCount")
 		return try {
 			doWorkImpl(isFullRun = isForeground && TAG_ONESHOT in tags)
 		} catch (e: CancellationException) {
 			throw e
 		} catch (e: Throwable) {
-			logger.log("fatal", e)
+			e.printStackTraceDebug()
 			Result.failure()
 		} finally {
 			withContext(NonCancellable) {
-				logger.flush()
 				notificationManager.cancel(WORKER_NOTIFICATION_ID)
 			}
 		}
@@ -104,7 +109,6 @@ class TrackWorker @AssistedInject constructor(
 			return Result.success()
 		}
 		val tracks = getTracksUseCase(if (isFullRun) Int.MAX_VALUE else BATCH_SIZE)
-		logger.log("Total ${tracks.size} tracks")
 		if (tracks.isEmpty()) {
 			return Result.success()
 		}
@@ -144,12 +148,15 @@ class TrackWorker @AssistedInject constructor(
 			if (applicationContext.checkNotificationPermission(WORKER_CHANNEL_ID)) {
 				notificationManager.notify(WORKER_NOTIFICATION_ID, createWorkerNotification(tracks.size, index + 1))
 			}
-			if (it is MangaUpdates.Failure) {
-				val e = it.error
-				logger.log("checkUpdatesAsync", e)
-				if (e is CloudFlareProtectedException) {
-					CaptchaNotifier(applicationContext).notify(e)
+			when (it) {
+				is MangaUpdates.Failure -> {
+					val e = it.error
+					if (e is CloudFlareProtectedException) {
+						CaptchaNotifier(applicationContext).notify(e)
+					}
 				}
+
+				is MangaUpdates.Success -> processDownload(it)
 			}
 		}.mapNotNull {
 			when (it) {
@@ -202,13 +209,13 @@ class TrackWorker @AssistedInject constructor(
 			PendingIntentCompat.getActivity(
 				applicationContext,
 				0,
-				SettingsActivity.newTrackerSettingsIntent(applicationContext),
+				AppRouter.trackerSettingsIntent(applicationContext),
 				0,
 				false,
 			),
 		)
 		addAction(
-			materialR.drawable.material_ic_clear_black_24dp,
+			appcompatR.drawable.abc_ic_clear_material,
 			applicationContext.getString(android.R.string.cancel),
 			workManager.createCancelPendingIntent(id),
 		)
@@ -237,6 +244,30 @@ class TrackWorker @AssistedInject constructor(
 		}
 	}.build()
 
+	private suspend fun processDownload(mangaUpdates: MangaUpdates.Success) {
+		if (!mangaUpdates.isValid || mangaUpdates.newChapters.isEmpty()) {
+			return
+		}
+		when (settings.trackerDownloadStrategy) {
+			TrackerDownloadStrategy.DISABLED -> Unit
+			TrackerDownloadStrategy.DOWNLOADED -> {
+				val localManga = localRepositoryLazy.get().findSavedManga(mangaUpdates.manga)
+				if (localManga != null) {
+					val task = DownloadTask(
+						mangaId = mangaUpdates.manga.id,
+						isPaused = false,
+						isSilent = false,
+						chaptersIds = mangaUpdates.newChapters.ids().toLongArray(),
+						destination = null,
+						format = null,
+						allowMeteredNetwork = settings.allowDownloadOnMeteredNetwork != TriStateOption.DISABLED,
+					)
+					downloadSchedulerLazy.get().schedule(setOf(mangaUpdates.manga to task))
+				}
+			}
+		}
+	}
+
 	@Reusable
 	class Scheduler @Inject constructor(
 		private val workManager: WorkManager,
@@ -245,10 +276,13 @@ class TrackWorker @AssistedInject constructor(
 	) : PeriodicWorkScheduler {
 
 		override suspend fun schedule() {
+			val frequency = settings.trackerFrequencyFactor
+			if (frequency <= 0f) {
+				return unschedule()
+			}
 			val constraints = createConstraints()
 			val runCount = dbProvider.get().getTracksDao().getTracksCount()
 			val runsPerFullCheck = (runCount / BATCH_SIZE.toFloat()).toIntUp().coerceAtLeast(1)
-			val frequency = settings.trackerFrequencyFactor
 			val interval = (18 / runsPerFullCheck / frequency).roundToInt().coerceAtLeast(2)
 			val request = PeriodicWorkRequestBuilder<TrackWorker>(interval.toLong(), TimeUnit.HOURS)
 				.setConstraints(constraints)

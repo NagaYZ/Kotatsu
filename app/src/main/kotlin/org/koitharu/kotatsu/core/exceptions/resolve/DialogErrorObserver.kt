@@ -6,8 +6,8 @@ import androidx.core.util.Consumer
 import androidx.fragment.app.Fragment
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.ui.dialog.ErrorDetailsDialog
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
+import org.koitharu.kotatsu.core.util.ext.isSerializable
 import org.koitharu.kotatsu.parsers.exception.ParseException
 
 class DialogErrorObserver(
@@ -31,10 +31,10 @@ class DialogErrorObserver(
 		if (canResolve(value)) {
 			dialogBuilder.setPositiveButton(ExceptionResolver.getResolveStringId(value), listener)
 		} else if (value is ParseException) {
-			val fm = fragmentManager
-			if (fm != null) {
+			val router = router()
+			if (router != null && value.isSerializable()) {
 				dialogBuilder.setPositiveButton(R.string.details) { _, _ ->
-					ErrorDetailsDialog.show(fm, value, value.url)
+					router.showErrorDialog(value)
 				}
 			}
 		}

@@ -2,11 +2,10 @@ package org.koitharu.kotatsu.browser.cloudflare
 
 import android.graphics.Bitmap
 import android.webkit.WebView
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.koitharu.kotatsu.browser.BrowserClient
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
+import org.koitharu.kotatsu.parsers.network.CloudFlareHelper
 
-private const val CF_CLEARANCE = "cf_clearance"
 private const val LOOP_COUNTER = 3
 
 class CloudFlareClient(
@@ -23,7 +22,7 @@ class CloudFlareClient(
 		checkClearance()
 	}
 
-	override fun onPageCommitVisible(view: WebView, url: String?) {
+	override fun onPageCommitVisible(view: WebView, url: String) {
 		super.onPageCommitVisible(view, url)
 		callback.onPageLoaded()
 	}
@@ -50,8 +49,5 @@ class CloudFlareClient(
 		}
 	}
 
-	private fun getClearance(): String? {
-		return cookieJar.loadForRequest(targetUrl.toHttpUrl())
-			.find { it.name == CF_CLEARANCE }?.value
-	}
+	private fun getClearance() = CloudFlareHelper.getClearanceCookie(cookieJar, targetUrl)
 }

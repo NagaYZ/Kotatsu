@@ -1,12 +1,13 @@
 package org.koitharu.kotatsu.local.ui
 
+import android.annotation.SuppressLint
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -16,6 +17,8 @@ import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.ui.CoroutineIntentService
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.getParcelableExtraCompat
+import org.koitharu.kotatsu.core.util.ext.powerManager
+import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -42,21 +45,19 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 		super.onDestroy()
 	}
 
-	override suspend fun processIntent(startId: Int, intent: Intent) {
+	override suspend fun IntentJobContext.processIntent(intent: Intent) {
+		startForeground(this)
 		val manga = intent.getParcelableExtraCompat<ParcelableManga>(EXTRA_MANGA)?.manga ?: return
 		val chaptersIds = intent.getLongArrayExtra(EXTRA_CHAPTERS_IDS)?.toSet() ?: return
-		startForeground()
-		try {
+		powerManager.withPartialWakeLock(TAG) {
 			val mangaWithChapters = localMangaRepository.getDetails(manga)
 			localMangaRepository.deleteChapters(mangaWithChapters, chaptersIds)
 			localStorageChanges.emit(LocalManga(localMangaRepository.getDetails(manga)))
-		} finally {
-			ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
 		}
 	}
 
-	override fun onError(startId: Int, error: Throwable) {
-		val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+	override fun IntentJobContext.onError(error: Throwable) {
+		val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
 			.setContentTitle(getString(R.string.error_occurred))
 			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
 			.setDefaults(0)
@@ -64,13 +65,14 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 			.setContentText(error.getDisplayMessage(resources))
 			.setSmallIcon(android.R.drawable.stat_notify_error)
 			.setAutoCancel(true)
-			.setContentIntent(ErrorReporterReceiver.getPendingIntent(this, error))
+			.setContentIntent(ErrorReporterReceiver.getPendingIntent(applicationContext, error))
 			.build()
-		val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+		val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 		nm.notify(NOTIFICATION_ID + startId, notification)
 	}
 
-	private fun startForeground() {
+	@SuppressLint("InlinedApi")
+	private fun startForeground(jobContext: IntentJobContext) {
 		val title = getString(R.string.local_manga_processing)
 		val manager = NotificationManagerCompat.from(this)
 		val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
@@ -92,7 +94,7 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 			.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFERRED)
 			.setOngoing(false)
 			.build()
-		startForeground(NOTIFICATION_ID, notification)
+		jobContext.setForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 	}
 
 	companion object {
@@ -105,6 +107,8 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 
 		private const val EXTRA_MANGA = "manga"
 		private const val EXTRA_CHAPTERS_IDS = "chapters_ids"
+
+		private const val TAG = CHANNEL_ID
 
 		fun start(context: Context, manga: Manga, chaptersIds: Collection<Long>) {
 			if (chaptersIds.isEmpty()) {

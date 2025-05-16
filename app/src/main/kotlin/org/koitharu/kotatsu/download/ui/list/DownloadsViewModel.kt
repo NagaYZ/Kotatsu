@@ -22,10 +22,8 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.model.formatNumber
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
-import org.koitharu.kotatsu.core.parser.ParserMangaRepository
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.model.DateTimeAgo
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
@@ -291,7 +289,7 @@ class DownloadsViewModel @Inject constructor(
 		}
 		return cacheMutex.withLock {
 			mangaCache.getOrElse(mangaId) {
-				mangaDataRepository.findMangaById(mangaId)?.also {
+				mangaDataRepository.findMangaById(mangaId, withChapters = true)?.also {
 					mangaCache[mangaId] = it
 				} ?: return null
 			}
@@ -299,7 +297,7 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	private fun observeChapters(manga: Manga, workId: UUID): StateFlow<List<DownloadChapter>?> = flow {
-		val chapterIds = workScheduler.getInputChaptersIds(workId)?.toSet()
+		val chapterIds = workScheduler.getTask(workId)?.chaptersIds
 		val chapters = (tryLoad(manga) ?: manga).chapters ?: return@flow
 
 		suspend fun mapChapters(): List<DownloadChapter> {
@@ -309,7 +307,7 @@ class DownloadsViewModel @Inject constructor(
 			return chapters.mapNotNullTo(ArrayList(size)) {
 				if (chapterIds == null || it.id in chapterIds) {
 					DownloadChapter(
-						number = it.formatNumber(),
+						number = it.numberString(),
 						name = it.name,
 						isDownloaded = it.id in localChapters,
 					)
@@ -327,6 +325,6 @@ class DownloadsViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
-		(mangaRepositoryFactory.create(manga.source) as ParserMangaRepository).getDetails(manga)
+		mangaRepositoryFactory.create(manga.source).getDetails(manga)
 	}.getOrNull()
 }

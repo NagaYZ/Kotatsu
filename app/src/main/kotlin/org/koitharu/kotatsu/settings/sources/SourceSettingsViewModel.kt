@@ -9,10 +9,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.HttpUrl
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.network.cookies.MutableCookieJar
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.parser.ParserMangaRepository
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
@@ -31,17 +33,19 @@ class SourceSettingsViewModel @Inject constructor(
 	private val mangaSourcesRepository: MangaSourcesRepository,
 ) : BaseViewModel(), SharedPreferences.OnSharedPreferenceChangeListener {
 
-	val source = MangaSource(savedStateHandle.get<String>(SourceSettingsFragment.EXTRA_SOURCE))
+	val source = MangaSource(savedStateHandle.get<String>(AppRouter.KEY_SOURCE))
 	val repository = mangaRepositoryFactory.create(source)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	val username = MutableStateFlow<String?>(null)
+	val browserUrl = MutableStateFlow<String?>(null)
 	val isEnabled = mangaSourcesRepository.observeIsEnabled(source)
 	private var usernameLoadJob: Job? = null
 
 	init {
 		when (repository) {
 			is ParserMangaRepository -> {
+				browserUrl.value = "https://${repository.domain}"
 				repository.getConfig().subscribe(this)
 				loadUsername(repository.getAuthProvider())
 			}
@@ -58,11 +62,14 @@ class SourceSettingsViewModel @Inject constructor(
 	}
 
 	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-		when (repository) {
-			is CachingMangaRepository -> {
-				if (key != SourceSettings.KEY_SLOWDOWN && key != SourceSettings.KEY_SORT_ORDER) {
-					repository.invalidateCache()
-				}
+		if (repository is CachingMangaRepository) {
+			if (key != SourceSettings.KEY_SLOWDOWN && key != SourceSettings.KEY_SORT_ORDER) {
+				repository.invalidateCache()
+			}
+		}
+		if (repository is ParserMangaRepository) {
+			if (key == AppSettings.KEY_OPEN_BROWSER) {
+				browserUrl.value = "https://${repository.domain}"
 			}
 		}
 	}

@@ -12,11 +12,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.bookmarks.data.BookmarkEntity
 import org.koitharu.kotatsu.bookmarks.data.BookmarksDao
+import org.koitharu.kotatsu.core.db.dao.ChaptersDao
 import org.koitharu.kotatsu.core.db.dao.MangaDao
 import org.koitharu.kotatsu.core.db.dao.MangaSourcesDao
 import org.koitharu.kotatsu.core.db.dao.PreferencesDao
 import org.koitharu.kotatsu.core.db.dao.TagsDao
 import org.koitharu.kotatsu.core.db.dao.TrackLogsDao
+import org.koitharu.kotatsu.core.db.entity.ChapterEntity
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
 import org.koitharu.kotatsu.core.db.entity.MangaSourceEntity
@@ -35,6 +37,11 @@ import org.koitharu.kotatsu.core.db.migrations.Migration19To20
 import org.koitharu.kotatsu.core.db.migrations.Migration1To2
 import org.koitharu.kotatsu.core.db.migrations.Migration20To21
 import org.koitharu.kotatsu.core.db.migrations.Migration21To22
+import org.koitharu.kotatsu.core.db.migrations.Migration22To23
+import org.koitharu.kotatsu.core.db.migrations.Migration23To24
+import org.koitharu.kotatsu.core.db.migrations.Migration24To23
+import org.koitharu.kotatsu.core.db.migrations.Migration24To25
+import org.koitharu.kotatsu.core.db.migrations.Migration25To26
 import org.koitharu.kotatsu.core.db.migrations.Migration2To3
 import org.koitharu.kotatsu.core.db.migrations.Migration3To4
 import org.koitharu.kotatsu.core.db.migrations.Migration4To5
@@ -50,6 +57,8 @@ import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouritesDao
 import org.koitharu.kotatsu.history.data.HistoryDao
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndexDao
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingDao
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.stats.data.StatsDao
@@ -60,14 +69,14 @@ import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TracksDao
 
-const val DATABASE_VERSION = 22
+const val DATABASE_VERSION = 26
 
 @Database(
 	entities = [
-		MangaEntity::class, TagEntity::class, HistoryEntity::class, MangaTagsEntity::class,
-		FavouriteCategoryEntity::class, FavouriteEntity::class, MangaPrefsEntity::class,
-		TrackEntity::class, TrackLogEntity::class, SuggestionEntity::class, BookmarkEntity::class,
-		ScrobblingEntity::class, MangaSourceEntity::class, StatsEntity::class,
+		MangaEntity::class, TagEntity::class, HistoryEntity::class, MangaTagsEntity::class, ChapterEntity::class,
+		FavouriteCategoryEntity::class, FavouriteEntity::class, MangaPrefsEntity::class, TrackEntity::class,
+		TrackLogEntity::class, SuggestionEntity::class, BookmarkEntity::class, ScrobblingEntity::class,
+		MangaSourceEntity::class, StatsEntity::class, LocalMangaIndexEntity::class,
 	],
 	version = DATABASE_VERSION,
 )
@@ -98,6 +107,10 @@ abstract class MangaDatabase : RoomDatabase() {
 	abstract fun getSourcesDao(): MangaSourcesDao
 
 	abstract fun getStatsDao(): StatsDao
+
+	abstract fun getLocalMangaIndexDao(): LocalMangaIndexDao
+
+	abstract fun getChaptersDao(): ChaptersDao
 }
 
 fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
@@ -122,6 +135,11 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
 	Migration19To20(),
 	Migration20To21(),
 	Migration21To22(),
+	Migration22To23(),
+	Migration23To24(),
+	Migration24To23(),
+	Migration24To25(),
+	Migration25To26(),
 )
 
 fun MangaDatabase(context: Context): MangaDatabase = Room

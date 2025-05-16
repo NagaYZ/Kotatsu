@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.core.util.ext
 
 import android.content.Context
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.content.res.TypedArray
 import android.graphics.Color
 import android.graphics.drawable.Drawable
@@ -8,11 +10,12 @@ import androidx.annotation.AttrRes
 import androidx.annotation.ColorInt
 import androidx.annotation.FloatRange
 import androidx.annotation.Px
-import androidx.annotation.StyleRes
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.use
 import androidx.core.graphics.ColorUtils
-import com.google.android.material.R as materialR
+
+val Resources.isNightMode: Boolean
+	get() = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 
 fun Context.getThemeDrawable(
 	@AttrRes resId: Int,
@@ -31,7 +34,7 @@ fun Context.getThemeColor(
 @Px
 fun Context.getThemeDimensionPixelSize(
 	@AttrRes resId: Int,
-	@ColorInt fallback: Int = 0,
+	@Px fallback: Int = 0,
 ) = obtainStyledAttributes(intArrayOf(resId)).use {
 	it.getDimensionPixelSize(0, fallback)
 }
@@ -39,7 +42,7 @@ fun Context.getThemeDimensionPixelSize(
 @Px
 fun Context.getThemeDimensionPixelOffset(
 	@AttrRes resId: Int,
-	@ColorInt fallback: Int = 0,
+	@Px fallback: Int = 0,
 ) = obtainStyledAttributes(intArrayOf(resId)).use {
 	it.getDimensionPixelOffset(0, fallback)
 }
@@ -73,11 +76,8 @@ fun Context.getThemeResId(
 	it.getResourceId(0, fallback)
 }
 
+@Deprecated("")
 fun TypedArray.getDrawableCompat(context: Context, index: Int): Drawable? {
 	val resId = getResourceId(index, 0)
 	return if (resId != 0) ContextCompat.getDrawable(context, resId) else null
 }
-
-@get:StyleRes
-val DIALOG_THEME_CENTERED: Int
-	inline get() = materialR.style.ThemeOverlay_Material3_MaterialAlertDialog_Centered

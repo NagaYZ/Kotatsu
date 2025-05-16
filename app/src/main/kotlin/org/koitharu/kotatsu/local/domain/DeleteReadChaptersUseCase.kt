@@ -1,28 +1,29 @@
 package org.koitharu.kotatsu.local.domain
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import org.koitharu.kotatsu.core.model.findById
 import org.koitharu.kotatsu.core.model.ids
 import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
-import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.parsers.util.findById
+import org.koitharu.kotatsu.parsers.util.recoverCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
 
 class DeleteReadChaptersUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val historyRepository: HistoryRepository,
-	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
+	private val mangaRepositoryFactory: MangaRepository.Factory,
 ) {
 
 	suspend operator fun invoke(manga: Manga): Int {
@@ -33,12 +34,11 @@ class DeleteReadChaptersUseCase @Inject constructor(
 		}
 		val task = getDeletionTask(localManga) ?: return 0
 		localMangaRepository.deleteChapters(task.manga.manga, task.chaptersIds)
-		emitUpdate(localManga)
 		return task.chaptersIds.size
 	}
 
 	suspend operator fun invoke(): Int {
-		val list = localMangaRepository.getList(0, null)
+		val list = localMangaRepository.getList(0, null, null)
 		if (list.isEmpty()) {
 			return 0
 		}
@@ -58,7 +58,6 @@ class DeleteReadChaptersUseCase @Inject constructor(
 		}.buffer().map {
 			runCatchingCancellable {
 				localMangaRepository.deleteChapters(it.manga.manga, it.chaptersIds)
-				emitUpdate(it.manga)
 				it.chaptersIds.size
 			}.onFailure {
 				it.printStackTraceDebug()
@@ -68,13 +67,13 @@ class DeleteReadChaptersUseCase @Inject constructor(
 
 	private suspend fun getDeletionTask(manga: LocalManga): DeletionTask? {
 		val history = historyRepository.getOne(manga.manga) ?: return null
-		val chapters = manga.manga.chapters ?: localMangaRepository.getDetails(manga.manga).chapters
-		if (chapters.isNullOrEmpty()) {
+		val chapters = getAllChapters(manga)
+		if (chapters.isEmpty()) {
 			return null
 		}
 		val branch = (chapters.findById(history.chapterId) ?: return null).branch
-		val filteredChapters = manga.manga.getChapters(branch)?.takeWhile { it.id != history.chapterId }
-		return if (filteredChapters.isNullOrEmpty()) {
+		val filteredChapters = chapters.filter { x -> x.branch == branch }.takeWhile { it.id != history.chapterId }
+		return if (filteredChapters.isEmpty()) {
 			null
 		} else {
 			DeletionTask(
@@ -84,10 +83,20 @@ class DeleteReadChaptersUseCase @Inject constructor(
 		}
 	}
 
-	private suspend fun emitUpdate(subject: LocalManga) {
-		val updated = localMangaRepository.getDetails(subject.manga)
-		localStorageChanges.emit(subject.copy(manga = updated))
-	}
+	private suspend fun getAllChapters(manga: LocalManga): List<MangaChapter> = runCatchingCancellable {
+		val remoteManga = checkNotNull(localMangaRepository.getRemoteManga(manga.manga))
+		checkNotNull(mangaRepositoryFactory.create(remoteManga.source).getDetails(remoteManga).chapters)
+	}.recoverCatchingCancellable {
+		checkNotNull(
+			manga.manga.chapters.let {
+				if (it.isNullOrEmpty()) {
+					localMangaRepository.getDetails(manga.manga).chapters
+				} else {
+					it
+				}
+			},
+		)
+	}.getOrDefault(manga.manga.chapters.orEmpty())
 
 	private class DeletionTask(
 		val manga: LocalManga,

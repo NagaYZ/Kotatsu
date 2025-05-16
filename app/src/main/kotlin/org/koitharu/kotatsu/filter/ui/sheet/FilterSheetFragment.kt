@@ -7,31 +7,37 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.updatePadding
-import androidx.fragment.app.FragmentManager
 import com.google.android.material.chip.Chip
+import com.google.android.material.slider.RangeSlider
+import com.google.android.material.slider.Slider
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.model.titleRes
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
+import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.getDisplayName
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.parentView
-import org.koitharu.kotatsu.core.util.ext.showDistinct
-import org.koitharu.kotatsu.core.util.ext.textAndVisible
+import org.koitharu.kotatsu.core.util.ext.setValueRounded
+import org.koitharu.kotatsu.core.util.ext.setValuesRounded
 import org.koitharu.kotatsu.databinding.SheetFilterBinding
-import org.koitharu.kotatsu.filter.ui.FilterOwner
+import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.model.FilterProperty
-import org.koitharu.kotatsu.filter.ui.tags.TagsCatalogSheet
 import org.koitharu.kotatsu.parsers.model.ContentRating
+import org.koitharu.kotatsu.parsers.model.ContentType
+import org.koitharu.kotatsu.parsers.model.Demographic
 import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
+import org.koitharu.kotatsu.parsers.util.toIntUp
 import java.util.Locale
-import com.google.android.material.R as materialR
 
 class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
 	AdapterView.OnItemSelectedListener,
@@ -50,50 +56,117 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
 			}
 		}
 		val filter = requireFilter()
-		filter.filterSortOrder.observe(viewLifecycleOwner, this::onSortOrderChanged)
-		filter.filterLocale.observe(viewLifecycleOwner, this::onLocaleChanged)
-		filter.filterTags.observe(viewLifecycleOwner, this::onTagsChanged)
-		filter.filterTagsExcluded.observe(viewLifecycleOwner, this::onTagsExcludedChanged)
-		filter.filterState.observe(viewLifecycleOwner, this::onStateChanged)
-		filter.filterContentRating.observe(viewLifecycleOwner, this::onContentRatingChanged)
+		filter.sortOrder.observe(viewLifecycleOwner, this::onSortOrderChanged)
+		filter.locale.observe(viewLifecycleOwner, this::onLocaleChanged)
+		filter.originalLocale.observe(viewLifecycleOwner, this::onOriginalLocaleChanged)
+		filter.tags.observe(viewLifecycleOwner, this::onTagsChanged)
+		filter.tagsExcluded.observe(viewLifecycleOwner, this::onTagsExcludedChanged)
+		filter.states.observe(viewLifecycleOwner, this::onStateChanged)
+		filter.contentTypes.observe(viewLifecycleOwner, this::onContentTypesChanged)
+		filter.contentRating.observe(viewLifecycleOwner, this::onContentRatingChanged)
+		filter.demographics.observe(viewLifecycleOwner, this::onDemographicsChanged)
+		filter.year.observe(viewLifecycleOwner, this::onYearChanged)
+		filter.yearRange.observe(viewLifecycleOwner, this::onYearRangeChanged)
 
+		binding.layoutGenres.setTitle(
+			if (filter.capabilities.isMultipleTagsSupported) {
+				R.string.genres
+			} else {
+				R.string.genre
+			},
+		)
 		binding.spinnerLocale.onItemSelectedListener = this
+		binding.spinnerOriginalLocale.onItemSelectedListener = this
 		binding.spinnerOrder.onItemSelectedListener = this
 		binding.chipsState.onChipClickListener = this
+		binding.chipsTypes.onChipClickListener = this
 		binding.chipsContentRating.onChipClickListener = this
+		binding.chipsDemographics.onChipClickListener = this
 		binding.chipsGenres.onChipClickListener = this
 		binding.chipsGenresExclude.onChipClickListener = this
+		binding.sliderYear.addOnChangeListener(this::onSliderValueChange)
+		binding.sliderYearsRange.addOnChangeListener(this::onRangeSliderValueChange)
+		binding.layoutGenres.setOnMoreButtonClickListener {
+			router.showTagsCatalogSheet(excludeMode = false)
+		}
+		binding.layoutGenresExclude.setOnMoreButtonClickListener {
+			router.showTagsCatalogSheet(excludeMode = true)
+		}
+	}
+
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val typeMask = WindowInsetsCompat.Type.systemBars()
+		viewBinding?.scrollView?.updatePadding(
+			bottom = insets.getInsets(typeMask).bottom,
+		)
+		return insets.consume(v, typeMask, bottom = true)
 	}
 
 	override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
 		val filter = requireFilter()
 		when (parent.id) {
-			R.id.spinner_order -> filter.setSortOrder(filter.filterSortOrder.value.availableItems[position])
-			R.id.spinner_locale -> filter.setLanguage(filter.filterLocale.value.availableItems[position])
+			R.id.spinner_order -> filter.setSortOrder(filter.sortOrder.value.availableItems[position])
+			R.id.spinner_locale -> filter.setLocale(filter.locale.value.availableItems[position])
+			R.id.spinner_original_locale -> filter.setOriginalLocale(filter.originalLocale.value.availableItems[position])
 		}
 	}
 
 	override fun onNothingSelected(parent: AdapterView<*>?) = Unit
 
+	private fun onSliderValueChange(slider: Slider, value: Float, fromUser: Boolean) {
+		if (!fromUser) {
+			return
+		}
+		val intValue = value.toInt()
+		val filter = requireFilter()
+		when (slider.id) {
+			R.id.slider_year -> filter.setYear(
+				if (intValue <= slider.valueFrom.toIntUp()) {
+					YEAR_UNKNOWN
+				} else {
+					intValue
+				},
+			)
+		}
+	}
+
+	private fun onRangeSliderValueChange(slider: RangeSlider, value: Float, fromUser: Boolean) {
+		if (!fromUser) {
+			return
+		}
+		val filter = requireFilter()
+		when (slider.id) {
+			R.id.slider_yearsRange -> filter.setYearRange(
+				valueFrom = slider.values.firstOrNull()?.let {
+					if (it <= slider.valueFrom) YEAR_UNKNOWN else it.toInt()
+				} ?: YEAR_UNKNOWN,
+				valueTo = slider.values.lastOrNull()?.let {
+					if (it >= slider.valueTo) YEAR_UNKNOWN else it.toInt()
+				} ?: YEAR_UNKNOWN,
+			)
+		}
+	}
+
 	override fun onChipClick(chip: Chip, data: Any?) {
 		val filter = requireFilter()
 		when (data) {
-			is MangaState -> filter.setState(data, !chip.isChecked)
+			is MangaState -> filter.toggleState(data, !chip.isChecked)
 			is MangaTag -> if (chip.parentView?.id == R.id.chips_genresExclude) {
-				filter.setTagExcluded(data, !chip.isChecked)
+				filter.toggleTagExclude(data, !chip.isChecked)
 			} else {
-				filter.setTag(data, !chip.isChecked)
+				filter.toggleTag(data, !chip.isChecked)
 			}
 
-			is ContentRating -> filter.setContentRating(data, !chip.isChecked)
-			null -> TagsCatalogSheet.show(childFragmentManager, chip.parentView?.id == R.id.chips_genresExclude)
+			is ContentType -> filter.toggleContentType(data, !chip.isChecked)
+			is ContentRating -> filter.toggleContentRating(data, !chip.isChecked)
+			is Demographic -> filter.toggleDemographic(data, !chip.isChecked)
+			null -> router.showTagsCatalogSheet(excludeMode = chip.parentView?.id == R.id.chips_genresExclude)
 		}
 	}
 
 	private fun onSortOrderChanged(value: FilterProperty<SortOrder>) {
 		val b = viewBinding ?: return
-		b.textViewOrderTitle.isGone = value.isEmpty()
-		b.cardOrder.isGone = value.isEmpty()
+		b.layoutOrder.isGone = value.isEmpty()
 		if (value.isEmpty()) {
 			return
 		}
@@ -112,8 +185,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
 
 	private fun onLocaleChanged(value: FilterProperty<Locale?>) {
 		val b = viewBinding ?: return
-		b.textViewLocaleTitle.isGone = value.isEmpty()
-		b.cardLocale.isGone = value.isEmpty()
+		b.layoutLocale.isGone = value.isEmpty()
 		if (value.isEmpty()) {
 			return
 		}
@@ -130,83 +202,61 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
 		}
 	}
 
-	private fun onTagsChanged(value: FilterProperty<MangaTag>) {
+	private fun onOriginalLocaleChanged(value: FilterProperty<Locale?>) {
 		val b = viewBinding ?: return
-		b.textViewGenresTitle.isGone = value.isEmpty()
-		b.chipsGenres.isGone = value.isEmpty()
-		b.textViewGenresHint.textAndVisible = value.error?.getDisplayMessage(resources)
+		b.layoutOriginalLocale.isGone = value.isEmpty()
 		if (value.isEmpty()) {
 			return
 		}
-		val chips = ArrayList<ChipsView.ChipModel>(value.selectedItems.size + value.availableItems.size + 1)
-		value.selectedItems.mapTo(chips) { tag ->
+		val selected = value.selectedItems.singleOrNull()
+		b.spinnerOriginalLocale.adapter = ArrayAdapter(
+			b.spinnerOriginalLocale.context,
+			android.R.layout.simple_spinner_dropdown_item,
+			android.R.id.text1,
+			value.availableItems.map { it.getDisplayName(b.spinnerOriginalLocale.context) },
+		)
+		val selectedIndex = value.availableItems.indexOf(selected)
+		if (selectedIndex >= 0) {
+			b.spinnerOriginalLocale.setSelection(selectedIndex, false)
+		}
+	}
+
+	private fun onTagsChanged(value: FilterProperty<MangaTag>) {
+		val b = viewBinding ?: return
+		b.layoutGenres.isGone = value.isEmptyAndSuccess()
+		b.layoutGenres.setError(value.error?.getDisplayMessage(resources))
+		if (value.isEmpty()) {
+			return
+		}
+		val chips = value.availableItems.map { tag ->
 			ChipsView.ChipModel(
 				title = tag.title,
-				isChecked = true,
+				isChecked = tag in value.selectedItems,
 				data = tag,
 			)
 		}
-		value.availableItems.mapNotNullTo(chips) { tag ->
-			if (tag !in value.selectedItems) {
-				ChipsView.ChipModel(
-					title = tag.title,
-					isChecked = false,
-					data = tag,
-				)
-			} else {
-				null
-			}
-		}
-		chips.add(
-			ChipsView.ChipModel(
-				title = getString(R.string.more),
-				icon = materialR.drawable.abc_ic_menu_overflow_material,
-			),
-		)
 		b.chipsGenres.setChips(chips)
 	}
 
 	private fun onTagsExcludedChanged(value: FilterProperty<MangaTag>) {
 		val b = viewBinding ?: return
-		b.textViewGenresExcludeTitle.isGone = value.isEmpty()
-		b.chipsGenresExclude.isGone = value.isEmpty()
+		b.layoutGenresExclude.isGone = value.isEmpty()
 		if (value.isEmpty()) {
 			return
 		}
-		val chips = ArrayList<ChipsView.ChipModel>(value.selectedItems.size + value.availableItems.size + 1)
-		value.selectedItems.mapTo(chips) { tag ->
+		val chips = value.availableItems.map { tag ->
 			ChipsView.ChipModel(
-				tint = 0,
 				title = tag.title,
-				icon = 0,
-				isChecked = true,
+				isChecked = tag in value.selectedItems,
 				data = tag,
 			)
 		}
-		value.availableItems.mapNotNullTo(chips) { tag ->
-			if (tag !in value.selectedItems) {
-				ChipsView.ChipModel(
-					title = tag.title,
-					isChecked = false,
-					data = tag,
-				)
-			} else {
-				null
-			}
-		}
-		chips.add(
-			ChipsView.ChipModel(
-				title = getString(R.string.more),
-				icon = materialR.drawable.abc_ic_menu_overflow_material,
-			),
-		)
 		b.chipsGenresExclude.setChips(chips)
 	}
 
 	private fun onStateChanged(value: FilterProperty<MangaState>) {
 		val b = viewBinding ?: return
-		b.textViewStateTitle.isGone = value.isEmpty()
-		b.chipsState.isGone = value.isEmpty()
+		b.layoutState.isGone = value.isEmpty()
 		if (value.isEmpty()) {
 			return
 		}
@@ -220,10 +270,25 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
 		b.chipsState.setChips(chips)
 	}
 
+	private fun onContentTypesChanged(value: FilterProperty<ContentType>) {
+		val b = viewBinding ?: return
+		b.layoutTypes.isGone = value.isEmpty()
+		if (value.isEmpty()) {
+			return
+		}
+		val chips = value.availableItems.map { type ->
+			ChipsView.ChipModel(
+				title = getString(type.titleResId),
+				isChecked = type in value.selectedItems,
+				data = type,
+			)
+		}
+		b.chipsTypes.setChips(chips)
+	}
+
 	private fun onContentRatingChanged(value: FilterProperty<ContentRating>) {
 		val b = viewBinding ?: return
-		b.textViewContentRatingTitle.isGone = value.isEmpty()
-		b.chipsContentRating.isGone = value.isEmpty()
+		b.layoutContentRating.isGone = value.isEmpty()
 		if (value.isEmpty()) {
 			return
 		}
@@ -237,12 +302,60 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(),
 		b.chipsContentRating.setChips(chips)
 	}
 
-	private fun requireFilter() = (requireActivity() as FilterOwner).filter
-
-	companion object {
-
-		private const val TAG = "FilterSheet"
-
-		fun show(fm: FragmentManager) = FilterSheetFragment().showDistinct(fm, TAG)
+	private fun onDemographicsChanged(value: FilterProperty<Demographic>) {
+		val b = viewBinding ?: return
+		b.layoutDemographics.isGone = value.isEmpty()
+		if (value.isEmpty()) {
+			return
+		}
+		val chips = value.availableItems.map { demographic ->
+			ChipsView.ChipModel(
+				title = getString(demographic.titleResId),
+				isChecked = demographic in value.selectedItems,
+				data = demographic,
+			)
+		}
+		b.chipsDemographics.setChips(chips)
 	}
+
+	private fun onYearChanged(value: FilterProperty<Int>) {
+		val b = viewBinding ?: return
+		b.layoutYear.isGone = value.isEmpty()
+		if (value.isEmpty()) {
+			return
+		}
+		val currentValue = value.selectedItems.singleOrNull() ?: YEAR_UNKNOWN
+		b.layoutYear.setValueText(
+			if (currentValue == YEAR_UNKNOWN) {
+				getString(R.string.any)
+			} else {
+				currentValue.toString()
+			},
+		)
+		b.sliderYear.valueFrom = value.availableItems.first().toFloat()
+		b.sliderYear.valueTo = value.availableItems.last().toFloat()
+		b.sliderYear.setValueRounded(currentValue.toFloat())
+	}
+
+	private fun onYearRangeChanged(value: FilterProperty<Int>) {
+		val b = viewBinding ?: return
+		b.layoutYearsRange.isGone = value.isEmpty()
+		if (value.isEmpty()) {
+			return
+		}
+		b.sliderYearsRange.valueFrom = value.availableItems.first().toFloat()
+		b.sliderYearsRange.valueTo = value.availableItems.last().toFloat()
+		val currentValueFrom = value.selectedItems.firstOrNull()?.toFloat() ?: b.sliderYearsRange.valueFrom
+		val currentValueTo = value.selectedItems.lastOrNull()?.toFloat() ?: b.sliderYearsRange.valueTo
+		b.layoutYearsRange.setValueText(
+			getString(
+				R.string.memory_usage_pattern,
+				currentValueFrom.toInt().toString(),
+				currentValueTo.toInt().toString(),
+			),
+		)
+		b.sliderYearsRange.setValuesRounded(currentValueFrom, currentValueTo)
+	}
+
+	private fun requireFilter() = (requireActivity() as FilterCoordinator.Owner).filterCoordinator
 }

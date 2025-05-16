@@ -1,13 +1,11 @@
 package org.koitharu.kotatsu.core.backup
 
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import okhttp3.internal.closeQuietly
 import okio.Closeable
 import org.json.JSONArray
 import org.koitharu.kotatsu.core.exceptions.BadBackupFormatException
-import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import java.io.File
 import java.util.EnumSet
 import java.util.zip.ZipException
@@ -35,25 +33,29 @@ class BackupZipInput private constructor(val file: File) : Closeable {
 		zipFile.close()
 	}
 
-	fun cleanupAsync() {
-		processLifecycleScope.launch(Dispatchers.IO, CoroutineStart.ATOMIC) {
-			runCatching {
-				close()
-				file.delete()
-			}
-		}
+	fun closeAndDelete() {
+		closeQuietly()
+		file.delete()
 	}
 
 	companion object {
 
-		fun from(file: File): BackupZipInput = try {
-			val res = BackupZipInput(file)
-			if (res.zipFile.getEntry("index") == null) {
-				throw BadBackupFormatException(null)
+		fun from(file: File): BackupZipInput {
+			var res: BackupZipInput? = null
+			return try {
+				res = BackupZipInput(file)
+				if (res.zipFile.getEntry("index") == null) {
+					throw BadBackupFormatException(null)
+				}
+				res
+			} catch (exception: Throwable) {
+				res?.closeQuietly()
+				throw if (exception is ZipException) {
+					BadBackupFormatException(exception)
+				} else {
+					exception
+				}
 			}
-			res
-		} catch (e: ZipException) {
-			throw BadBackupFormatException(e)
 		}
 	}
 }
