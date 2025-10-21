@@ -893,4 +893,11 @@
     <string name="test_parser">Test manga source</string>
     <string name="rename">Rename</string>
     <string name="save_filter">Save filter</string>
+    <string name="overwrite">Overwrite</string>
+    <string name="filter_overwrite_confirm">A filter named \"%s\" already exists. Do you want to overwrite it?</string>
+    <string name="storage_and_network">Storage and network</string>
+    <string name="create_or_restore_backup">Create or restore a backup</string>
+    <string name="data_removal">Data removal</string>
+    <string name="privacy">Privacy</string>
+    <string name="source_broken_warning">This manga source has been marked as broken. Some features may not work</string>
 </resources>
