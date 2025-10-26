@@ -498,6 +498,7 @@
     <string name="online_variant">Online variant</string>
     <string name="periodic_backups">Periodic backups</string>
     <string name="backup_frequency">Backup creation frequency</string>
+    <string name="frequency_every_6_hours">Every 6 hours</string>
     <string name="frequency_every_day">Every day</string>
     <string name="frequency_every_2_days">Every 2 days</string>
     <string name="frequency_once_per_week">Once per week</string>
@@ -900,4 +901,7 @@
     <string name="data_removal">Data removal</string>
     <string name="privacy">Privacy</string>
     <string name="source_broken_warning">This manga source has been marked as broken. Some features may not work</string>
+    <string name="download_default_directory">Default directory for downloading manga</string>
+    <string name="private_app_directory_warning">This directory with all data will be deleted if you uninstall the application</string>
+    <string name="available_pattern">%1$s available</string>
 </resources>
